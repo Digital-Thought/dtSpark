@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}New Conversation - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">
+            <i class="bi bi-plus-circle-fill"></i> New Conversation
+        </h2>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="card">
+            <div class="card-body">
+                <form id="new-conversation-form">
+                    <div class="mb-3">
+                        <label for="conversation-name" class="form-label">Conversation Name</label>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="conversation-name"
+                            name="name"
+                            placeholder="Enter a name for this conversation"
+                            required
+                        />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="model-select" class="form-label">Model</label>
+                        <select class="form-select" id="model-select" name="model_id" required>
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="instructions" class="form-label">Instructions (Optional)</label>
+                        <textarea
+                            class="form-control"
+                            id="instructions"
+                            name="instructions"
+                            rows="4"
+                            placeholder="Enter system instructions for this conversation (optional)"
+                        ></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="files" class="form-label">Attach Files (Optional)</label>
+                        <input
+                            type="file"
+                            class="form-control"
+                            id="files"
+                            name="files"
+                            multiple
+                        />
+                        <div class="form-text">
+                            Supported formats: txt, md, json, yaml, yml, xml, csv, log, py, js, ts, java, cpp, c, h
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-plus-circle-fill"></i> Create Conversation
+                        </button>
+                        <a href="/menu" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Cancel
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast container for notifications -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast" role="alert">
+        <div class="toast-header">
+            <strong class="me-auto">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body" id="toast-message"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Load available models
+async function loadModels() {
+    try {
+        const response = await fetch('/api/models');
+        const models = await response.json();
+
+        const select = document.getElementById('model-select');
+        select.innerHTML = '<option value="">Select a model...</option>';
+
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.id;
+
+            // Show service provider and optionally model maker
+            let displayText = model.name;
+            if (model.model_maker && model.provider !== model.model_maker) {
+                // Show both: "Model Name [Model Maker via Service Provider]"
+                displayText += ` [${model.model_maker} via ${model.provider}]`;
+            } else {
+                // Show service only: "Model Name [Service Provider]"
+                displayText += ` [${model.provider}]`;
+            }
+
+            option.textContent = displayText;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading models:', error);
+        showToast('Failed to load models', 'error');
+    }
+}
+
+// Show toast notification
+function showToast(message, type = 'info') {
+    const toast = document.getElementById('toast');
+    const toastBody = document.getElementById('toast-message');
+    const toastHeader = toast.querySelector('.toast-header');
+
+    toastBody.textContent = message;
+
+    // Update toast style based on type
+    toastHeader.className = 'toast-header';
+    if (type === 'success') {
+        toastHeader.classList.add('bg-success', 'text-white');
+    } else if (type === 'error') {
+        toastHeader.classList.add('bg-danger', 'text-white');
+    } else if (type === 'warning') {
+        toastHeader.classList.add('bg-warning');
+    }
+
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+}
+
+// Handle form submission
+document.getElementById('new-conversation-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData(e.target);
+
+    try {
+        const response = await fetch('/api/conversations', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create conversation');
+        }
+
+        const data = await response.json();
+
+        // Check for file upload warnings
+        if (data.warnings && data.warnings.length > 0) {
+            // Show warnings but still proceed
+            data.warnings.forEach(warning => {
+                showToast(warning, 'warning');
+            });
+            showToast('Conversation created (some files failed to upload)', 'success');
+        } else {
+            showToast('Conversation created successfully!', 'success');
+        }
+
+        // Redirect to chat page after a short delay
+        setTimeout(() => {
+            window.location.href = `/chat/${data.id}`;
+        }, data.warnings && data.warnings.length > 0 ? 2000 : 1000);
+
+    } catch (error) {
+        console.error('Error creating conversation:', error);
+        showToast(error.message || 'Failed to create conversation', 'error');
+    }
+});
+
+// Load models on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadModels();
+});
+</script>
+{% endblock %}

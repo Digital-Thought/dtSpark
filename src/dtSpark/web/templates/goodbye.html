@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Thank You - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card mt-5 border-success">
+            <div class="card-body text-center py-5">
+                <div class="mb-4">
+                    <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+                </div>
+
+                <h2 class="card-title mb-4">
+                    {% if shutdown %}
+                        <i class="bi bi-power"></i> Shutting Down
+                    {% else %}
+                        <i class="bi bi-wave"></i> Session Ended
+                    {% endif %}
+                </h2>
+
+                <p class="lead mb-4">
+                    Thank you for using Spark!
+                </p>
+
+                {% if shutdown %}
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle-fill"></i> The web server is shutting down...
+                    <div class="mt-2">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Shutting down...</span>
+                        </div>
+                        <span class="ms-2">Please wait</span>
+                    </div>
+                </div>
+
+                <p class="text-muted small mt-4">
+                    You can close this browser window. The CLI will return to the command prompt.
+                </p>
+                {% else %}
+                <div class="alert alert-success">
+                    <i class="bi bi-check-circle-fill"></i> Your session has been logged out successfully
+                </div>
+
+                <p class="text-muted small mt-4">
+                    The web server is still running. You can close this window or
+                    <a href="/login" class="alert-link">log in again</a>.
+                </p>
+                {% endif %}
+
+                <hr class="my-4">
+
+                <div class="text-muted small">
+                    <i class="bi bi-chat-dots-fill"></i> SPARK
+                    <br>
+                    <span class="text-muted" style="font-size: 0.85em;">
+                        Secure Personal AI Research Kit
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if shutdown %}
+<script>
+// Trigger server shutdown after a short delay
+setTimeout(function() {
+    fetch('/api/shutdown', { method: 'POST' })
+        .then(() => {
+            console.log('Shutdown request sent');
+        })
+        .catch((error) => {
+            console.error('Shutdown request failed:', error);
+        });
+}, 1000);
+</script>
+{% endif %}
+{% endblock %}

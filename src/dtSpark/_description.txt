@@ -1,0 +1,1 @@
+Spark is a powerful, multi-provider LLM interface for conversational AI with integrated tool support. It supports AWS Bedrock, Anthropic Direct API, and Ollama local models through both CLI and Web interfaces.

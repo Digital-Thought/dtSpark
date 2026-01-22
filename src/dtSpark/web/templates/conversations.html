@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}Conversations - {{ app_name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    .list-group-item .flex-grow-1:hover {
+        background-color: rgba(0, 123, 255, 0.05);
+        border-radius: 0.25rem;
+    }
+    .list-group-item {
+        transition: background-color 0.2s ease;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">
+            <i class="bi bi-list-ul"></i> Conversations
+            <button class="btn btn-primary float-end" onclick="showNewConversationModal()">
+                <i class="bi bi-plus-circle-fill"></i> New Conversation
+            </button>
+        </h2>
+    </div>
+</div>
+
+<!-- Conversations List -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body" id="conversations-list">
+                <div class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading conversations...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConversationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill text-danger"></i> Delete Conversation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete this conversation?</p>
+                <p class="mb-0"><strong id="delete-conversation-name"></strong></p>
+                <p class="text-danger small mt-2">
+                    <i class="bi bi-exclamation-circle"></i> This action cannot be undone. All messages and conversation history will be permanently deleted.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button" class="btn btn-danger" id="confirm-delete-btn" onclick="confirmDelete()">
+                    <i class="bi bi-trash-fill"></i> Delete Conversation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- New Conversation Modal -->
+<div class="modal fade" id="newConversationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-plus-circle-fill"></i> New Conversation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="new-conversation-form">
+                    <div class="mb-3">
+                        <label for="conversation-name" class="form-label">Conversation Name</label>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="conversation-name"
+                            name="name"
+                            placeholder="Enter a name for this conversation"
+                            required
+                        >
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="model-select" class="form-label">Model</label>
+                        <select class="form-select" id="model-select" name="model_id" required>
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="instructions" class="form-label">
+                            Instructions / System Prompt
+                            <span class="text-muted">(Optional)</span>
+                        </label>
+                        <textarea
+                            class="form-control"
+                            id="instructions"
+                            name="instructions"
+                            rows="4"
+                            placeholder="Enter system instructions for this conversation..."
+                        ></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="file-attachments" class="form-label">
+                            File Attachments
+                            <span class="text-muted">(Optional)</span>
+                        </label>
+                        <input
+                            class="form-control"
+                            type="file"
+                            id="file-attachments"
+                            name="files"
+                            multiple
+                        >
+                        <div class="form-text">
+                            Supported: txt, md, json, yaml, xml, csv, log, py, js, ts, java, cpp, c, h
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    Cancel
+                </button>
+                <button type="button" class="btn btn-primary" onclick="createConversation()">
+                    <i class="bi bi-check-circle-fill"></i> Create Conversation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Load conversations on page load
+window.addEventListener('load', () => {
+    loadConversations();
+});
+
+// Load conversations
+async function loadConversations() {
+    try {
+        const response = await fetch('/api/conversations');
+        const conversations = await response.json();
+
+        if (conversations.length === 0) {
+            document.getElementById('conversations-list').innerHTML = `
+                <div class="text-center text-muted">
+                    <i class="bi bi-inbox" style="font-size: 3rem;"></i>
+                    <p class="mt-3">No conversations yet</p>
+                    <button class="btn btn-primary" onclick="showNewConversationModal()">
+                        <i class="bi bi-plus-circle-fill"></i> Create Your First Conversation
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '<div class="list-group">';
+        conversations.forEach(conv => {
+            const createdDate = new Date(conv.created_at).toLocaleString();
+            const lastMessageDate = conv.last_message_at ?
+                new Date(conv.last_message_at).toLocaleString() :
+                'No messages yet';
+
+            html += `
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between align-items-start">
+                        <div class="flex-grow-1" style="cursor: pointer;" onclick="window.location.href='/chat/${conv.id}'">
+                            <h6 class="mb-1">
+                                <i class="bi bi-chat-dots"></i> ${conv.name}
+                            </h6>
+                            <p class="mb-1 small">
+                                <strong>Model:</strong> <code>${conv.model_id}</code>
+                            </p>
+                            <small class="text-muted">
+                                Created: ${createdDate} | Last message: ${lastMessageDate}
+                            </small>
+                        </div>
+                        <div class="d-flex flex-column align-items-end ms-3">
+                            <small class="text-muted mb-2">${conv.message_count} messages</small>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteConversation(${conv.id}, '${conv.name.replace(/'/g, "\\'")}')">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        html += '</div>';
+
+        document.getElementById('conversations-list').innerHTML = html;
+
+    } catch (error) {
+        document.getElementById('conversations-list').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-triangle-fill"></i> Failed to load conversations
+            </div>
+        `;
+    }
+}
+
+// Show new conversation modal
+async function showNewConversationModal() {
+    // Load available models
+    await loadModels();
+
+    const modal = new bootstrap.Modal(document.getElementById('newConversationModal'));
+    modal.show();
+}
+
+// Load available models
+async function loadModels() {
+    try {
+        const response = await fetch('/api/models');
+        const models = await response.json();
+
+        const select = document.getElementById('model-select');
+        select.innerHTML = '<option value="">Select a model...</option>';
+
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.id;
+
+            // Show service provider and optionally model maker
+            let displayText = model.name;
+            if (model.model_maker && model.provider !== model.model_maker) {
+                // Show both: "Model Name [Model Maker via Service Provider]"
+                displayText += ` [${model.model_maker} via ${model.provider}]`;
+            } else {
+                // Show service only: "Model Name [Service Provider]"
+                displayText += ` [${model.provider}]`;
+            }
+
+            option.textContent = displayText;
+            select.appendChild(option);
+        });
+
+    } catch (error) {
+        document.getElementById('model-select').innerHTML = `
+            <option value="">Failed to load models</option>
+        `;
+    }
+}
+
+// Create conversation
+async function createConversation() {
+    const form = document.getElementById('new-conversation-form');
+    const formData = new FormData(form);
+
+    try {
+        // Disable button
+        event.target.disabled = true;
+        event.target.innerHTML = '<i class="bi bi-hourglass-split"></i> Creating...';
+
+        const response = await fetch('/api/conversations', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to create conversation');
+        }
+
+        const conversation = await response.json();
+
+        // Close modal
+        bootstrap.Modal.getInstance(document.getElementById('newConversationModal')).hide();
+
+        // Redirect to chat
+        window.location.href = `/chat/${conversation.id}`;
+
+    } catch (error) {
+        alert('Failed to create conversation: ' + error.message);
+
+        // Re-enable button
+        event.target.disabled = false;
+        event.target.innerHTML = '<i class="bi bi-check-circle-fill"></i> Create Conversation';
+    }
+}
+
+// Global variable to store conversation to delete
+let conversationToDelete = null;
+
+// Show delete confirmation modal
+function deleteConversation(conversationId, conversationName) {
+    conversationToDelete = conversationId;
+    document.getElementById('delete-conversation-name').textContent = conversationName;
+
+    const modal = new bootstrap.Modal(document.getElementById('deleteConversationModal'));
+    modal.show();
+}
+
+// Confirm and execute deletion
+async function confirmDelete() {
+    if (!conversationToDelete) {
+        return;
+    }
+
+    const deleteBtn = document.getElementById('confirm-delete-btn');
+
+    try {
+        // Disable button
+        deleteBtn.disabled = true;
+        deleteBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Deleting...';
+
+        const response = await fetch(`/api/conversations/${conversationToDelete}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to delete conversation');
+        }
+
+        // Close modal
+        bootstrap.Modal.getInstance(document.getElementById('deleteConversationModal')).hide();
+
+        // Reset button state
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = '<i class="bi bi-trash-fill"></i> Delete Conversation';
+
+        // Clear conversation to delete
+        conversationToDelete = null;
+
+        // Reload conversations list
+        await loadConversations();
+
+    } catch (error) {
+        alert('Failed to delete conversation: ' + error.message);
+
+        // Re-enable button
+        deleteBtn.disabled = false;
+        deleteBtn.innerHTML = '<i class="bi bi-trash-fill"></i> Delete Conversation';
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,983 @@
+{% extends "base.html" %}
+
+{% block title %}Main Menu - {{ app_name }}{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .provider-badge {
+        font-size: 0.9rem;
+        padding: 0.5em 1em;
+    }
+    .provider-card {
+        border-left: 4px solid;
+    }
+    .provider-card.aws { border-left-color: #ff9900; }
+    .provider-card.anthropic { border-left-color: #d4a574; }
+    .provider-card.ollama { border-left-color: #0ea5e9; }
+    .provider-card.none { border-left-color: #6c757d; }
+
+    .status-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 0.5rem;
+    }
+    .status-indicator.active { background-color: #28a745; }
+    .status-indicator.inactive { background-color: #6c757d; }
+    .status-indicator.error { background-color: #dc3545; }
+
+    .quick-action-btn {
+        padding: 1rem 1.5rem;
+        font-size: 1.1rem;
+        transition: transform 0.1s ease;
+    }
+    .quick-action-btn:hover {
+        transform: translateY(-2px);
+    }
+
+    .info-label {
+        font-size: 0.8rem;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+    }
+    .info-value {
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 0.9rem;
+        word-break: break-all;
+    }
+
+    .nav-tabs .nav-link {
+        border: none;
+        border-bottom: 3px solid transparent;
+        color: #888;
+    }
+    .nav-tabs .nav-link:hover {
+        border-bottom-color: #444;
+        color: #ccc;
+    }
+    .nav-tabs .nav-link.active {
+        background: transparent;
+        border-bottom-color: #0d6efd;
+        color: #fff;
+    }
+
+    .integration-card {
+        transition: box-shadow 0.2s ease;
+    }
+    .integration-card:hover {
+        box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.3);
+    }
+
+    /* Provider icons in Overview tile */
+    .provider-icon-tile {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background: rgba(255,255,255,0.05);
+        transition: all 0.2s ease;
+        position: relative;
+        min-width: 100px;
+    }
+    .provider-icon-tile .provider-icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .provider-icon-tile .provider-name {
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    .provider-icon-tile .provider-status-dot {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        border: 2px solid #1a1a1a;
+    }
+    .provider-icon-tile .provider-status-dot.available { background-color: #28a745; }
+    .provider-icon-tile .provider-status-dot.unavailable { background-color: #6c757d; }
+    .provider-icon-tile.available { opacity: 1; }
+    .provider-icon-tile.unavailable { opacity: 0.5; }
+
+    /* Provider icon colours */
+    .provider-icon.bedrock { color: #ff9900; }
+    .provider-icon.anthropic { color: #d4a574; }
+    .provider-icon.ollama { color: #0ea5e9; }
+
+    /* Provider selector buttons in LLMs tab */
+    .provider-selector {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        background: rgba(255,255,255,0.03);
+        border-radius: 0.5rem;
+    }
+    .provider-selector-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        border: 2px solid transparent;
+        border-radius: 0.5rem;
+        background: rgba(255,255,255,0.05);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        min-width: 120px;
+    }
+    .provider-selector-btn:hover {
+        background: rgba(255,255,255,0.1);
+    }
+    .provider-selector-btn.active {
+        border-color: #0d6efd;
+        background: rgba(13,110,253,0.15);
+    }
+    .provider-selector-btn.unavailable {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    .provider-selector-btn .selector-icon {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+    .provider-selector-btn .selector-name {
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    .provider-selector-btn .selector-status {
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-0"><i class="bi bi-house-fill"></i> Main Menu</h2>
+        <small class="text-muted">SPARK v{{ app_version }} - Secure Personal AI Research Kit</small>
+    </div>
+</div>
+
+<!-- Tab Navigation -->
+<ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
+            <i class="bi bi-speedometer2"></i> Overview
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="llms-tab" data-bs-toggle="tab" data-bs-target="#llms" type="button" role="tab">
+            <i class="bi bi-cpu"></i> LLMs
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations" type="button" role="tab">
+            <i class="bi bi-plug"></i> Integrations
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">
+            <i class="bi bi-gear"></i> System
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="mainTabContent">
+
+    <!-- Overview Tab -->
+    <div class="tab-pane fade show active" id="overview" role="tabpanel">
+        <div class="row">
+            <!-- LLM Providers Status -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3"><i class="bi bi-cpu"></i> LLM Providers</h5>
+                        <div id="llm-providers-overview" class="d-flex justify-content-around flex-wrap gap-2">
+                            <div class="text-center py-3">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <span class="ms-2">Loading providers...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- System Status Summary -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title mb-3"><i class="bi bi-activity"></i> System Status</h5>
+                        <div id="system-status-summary">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span><i class="bi bi-hdd-network"></i> MCP Servers</span>
+                                <span id="mcp-status-badge" class="badge bg-secondary">Loading...</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span><i class="bi bi-database"></i> Database</span>
+                                <span class="badge bg-success">{{ database_type|default('SQLite') }}</span>
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span><i class="bi bi-shield-check"></i> Session</span>
+                                <span class="badge bg-success">Active</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="row">
+            <div class="col-12">
+                <h5 class="mb-3"><i class="bi bi-lightning-fill"></i> Quick Actions</h5>
+                <div class="d-grid gap-3 d-md-flex">
+                    <a href="/conversations/new" class="btn btn-primary quick-action-btn flex-fill">
+                        <i class="bi bi-plus-circle-fill"></i> Start New Conversation
+                    </a>
+                    <a href="/conversations" class="btn btn-outline-primary quick-action-btn flex-fill">
+                        <i class="bi bi-list-ul"></i> View Conversations
+                    </a>
+                    <button onclick="confirmQuit(event)" class="btn btn-outline-danger quick-action-btn">
+                        <i class="bi bi-power"></i> Quit
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LLMs Tab -->
+    <div class="tab-pane fade" id="llms" role="tabpanel">
+        <!-- Provider Selector Icons -->
+        <div class="provider-selector" id="provider-selector">
+            <div class="text-center py-3 w-100">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span class="ms-2">Loading providers...</span>
+            </div>
+        </div>
+
+        <!-- Selected Provider Details -->
+        <div id="selected-provider-details">
+            <div class="text-center py-5 text-muted">
+                <i class="bi bi-hand-index-thumb fs-1 d-block mb-3"></i>
+                <p>Select a provider above to view details and available models</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Integrations Tab -->
+    <div class="tab-pane fade" id="integrations" role="tabpanel">
+        <div class="row">
+            <!-- Tool Sources List -->
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-dark">
+                        <i class="bi bi-tools"></i> Tool Sources
+                    </div>
+                    <div class="card-body p-0" id="tool-sources-list">
+                        <div class="text-center py-4">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            <span class="ms-2">Loading tools...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Selected Tool Source Details -->
+            <div class="col-md-8 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-dark" id="tool-details-header">
+                        <i class="bi bi-wrench"></i> Available Tools
+                    </div>
+                    <div class="card-body" id="tool-details-content">
+                        <div class="text-center py-5 text-muted">
+                            <i class="bi bi-hand-index-thumb fs-1 d-block mb-3"></i>
+                            <p>Select a tool source from the left to view available tools</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Tab -->
+    <div class="tab-pane fade" id="system" role="tabpanel">
+        <div class="row">
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-dark">
+                        <i class="bi bi-fingerprint"></i> User Identity
+                    </div>
+                    <div class="card-body" id="user-identity">
+                        <div class="text-center py-3">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            <span class="ms-2">Loading user identity...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-dark">
+                        <i class="bi bi-database-fill"></i> Database
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="info-label">Database Type</div>
+                            <div class="info-value">
+                                <span class="badge bg-info">{{ database_type|default('SQLite') }}</span>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="info-label">Status</div>
+                            <div class="info-value">
+                                <span class="status-indicator active"></span> Connected
+                            </div>
+                        </div>
+                        <div class="text-muted small">
+                            <i class="bi bi-info-circle"></i>
+                            Stores conversations, tool permissions, and preferences.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-dark">
+                        <i class="bi bi-info-circle-fill"></i> Application Info
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="info-label">Version</div>
+                            <div class="info-value">{{ app_version }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="info-label">Application Name</div>
+                            <div class="info-value">{{ app_name }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="info-label">Interface Mode</div>
+                            <div class="info-value">
+                                <span class="badge bg-primary">Web UI</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Additional System Actions -->
+        <div class="row">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header bg-dark">
+                        <i class="bi bi-sliders"></i> System Actions
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2 d-md-flex">
+                            {% if cost_tracking_enabled %}
+                            <button class="btn btn-outline-secondary" onclick="refreshCosts()">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh AWS Costs
+                            </button>
+                            {% endif %}
+                            <button class="btn btn-outline-secondary" onclick="location.reload()">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh Page
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Global state
+let providerData = null;
+let allProviders = [];
+let selectedProviderType = null;
+
+// Provider definitions (all possible providers)
+const providerDefinitions = {
+    'aws': {
+        name: 'AWS Bedrock',
+        icon: 'bi-cloud-fill',
+        colour: '#ff9900',
+        description: 'Cloud-based model inference via AWS'
+    },
+    'anthropic': {
+        name: 'Anthropic',
+        icon: 'bi-cpu-fill',
+        colour: '#d4a574',
+        description: 'Direct API access to Claude models'
+    },
+    'ollama': {
+        name: 'Ollama',
+        icon: 'bi-pc-display',
+        colour: '#0ea5e9',
+        description: 'Local model inference'
+    }
+};
+
+// Load all data
+async function loadAllData() {
+    try {
+        const response = await fetch('/api/account');
+        if (!response.ok) throw new Error('Failed to fetch account info');
+        providerData = await response.json();
+
+        updateUserIdentity();
+    } catch (error) {
+        console.error('Error loading account data:', error);
+    }
+
+    // Load providers (includes models list)
+    await loadProviders();
+    loadMCPServers();
+}
+
+// Load all providers and update UI
+async function loadProviders() {
+    try {
+        const response = await fetch('/api/providers');
+        if (!response.ok) throw new Error('Failed to fetch providers');
+        allProviders = await response.json();
+
+        // Update Overview tab - LLM Providers tile
+        updateLLMProvidersOverview();
+
+        // Update LLMs tab - Provider selector
+        updateProviderSelector();
+
+        // Auto-select first available provider
+        if (allProviders.length > 0) {
+            selectProvider(allProviders[0].type);
+        }
+
+    } catch (error) {
+        console.error('Error loading providers:', error);
+        document.getElementById('llm-providers-overview').innerHTML = `
+            <div class="alert alert-danger mb-0 w-100">
+                <i class="bi bi-exclamation-triangle-fill"></i> Failed to load providers
+            </div>
+        `;
+    }
+}
+
+// Update the LLM Providers overview tile on Overview tab
+function updateLLMProvidersOverview() {
+    const container = document.getElementById('llm-providers-overview');
+
+    // Get configured provider types
+    const configuredTypes = new Set(allProviders.map(p => p.type));
+
+    let html = '';
+
+    // Show all three provider icons
+    Object.entries(providerDefinitions).forEach(([type, def]) => {
+        const isAvailable = configuredTypes.has(type);
+        const provider = allProviders.find(p => p.type === type);
+        const isConnected = provider && provider.status === 'connected';
+
+        html += `
+            <div class="provider-icon-tile ${isAvailable ? 'available' : 'unavailable'}">
+                <div class="provider-status-dot ${isAvailable && isConnected ? 'available' : 'unavailable'}"></div>
+                <i class="bi ${def.icon} provider-icon ${type}"></i>
+                <span class="provider-name">${def.name}</span>
+                ${isAvailable ? `
+                    <span class="badge bg-success mt-1" style="font-size: 0.7rem;">
+                        ${provider.models.length} model${provider.models.length !== 1 ? 's' : ''}
+                    </span>
+                ` : `
+                    <span class="badge bg-secondary mt-1" style="font-size: 0.7rem;">Not configured</span>
+                `}
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+// Update the provider selector on LLMs tab
+function updateProviderSelector() {
+    const container = document.getElementById('provider-selector');
+
+    // Get configured provider types
+    const configuredTypes = new Set(allProviders.map(p => p.type));
+
+    let html = '';
+
+    // Show all three provider icons as selectable buttons
+    Object.entries(providerDefinitions).forEach(([type, def]) => {
+        const isAvailable = configuredTypes.has(type);
+        const provider = allProviders.find(p => p.type === type);
+        const isConnected = provider && provider.status === 'connected';
+
+        html += `
+            <div class="provider-selector-btn ${isAvailable ? '' : 'unavailable'}"
+                 data-provider-type="${type}"
+                 onclick="${isAvailable ? `selectProvider('${type}')` : ''}"
+                 title="${isAvailable ? `View ${def.name} details` : `${def.name} is not configured`}">
+                <i class="bi ${def.icon} selector-icon" style="color: ${def.colour};"></i>
+                <span class="selector-name">${def.name}</span>
+                <span class="selector-status ${isAvailable && isConnected ? 'text-success' : isAvailable ? 'text-warning' : 'text-muted'}">
+                    ${isAvailable && isConnected ? '● Connected' : isAvailable ? '● Error' : '○ Not configured'}
+                </span>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+// Select a provider and show its details
+function selectProvider(providerType) {
+    selectedProviderType = providerType;
+
+    // Update selector button active states
+    document.querySelectorAll('.provider-selector-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.providerType === providerType) {
+            btn.classList.add('active');
+        }
+    });
+
+    // Find the provider data
+    const provider = allProviders.find(p => p.type === providerType);
+    const def = providerDefinitions[providerType];
+
+    if (!provider) {
+        document.getElementById('selected-provider-details').innerHTML = `
+            <div class="alert alert-warning">
+                <i class="bi bi-exclamation-triangle-fill"></i> Provider not found
+            </div>
+        `;
+        return;
+    }
+
+    const statusBadge = provider.status === 'connected'
+        ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Connected</span>'
+        : '<span class="badge bg-danger"><i class="bi bi-x-circle"></i> Error</span>';
+
+    let html = `
+        <div class="card" style="border-left: 4px solid ${def.colour};">
+            <div class="card-header" style="background-color: ${def.colour}; color: ${providerType === 'aws' ? '#000' : '#fff'};">
+                <div class="d-flex justify-content-between align-items-center">
+                    <span><i class="bi ${def.icon}"></i> ${provider.name}</span>
+                    ${statusBadge}
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6 class="mb-3">Connection Details</h6>
+                        <div class="mb-3">
+                            <div class="info-label">Authentication</div>
+                            <div class="info-value">
+                                <span class="badge bg-primary">${getAuthMethodDisplay(provider.auth_method)}</span>
+                            </div>
+                        </div>
+                        ${provider.region ? `
+                        <div class="mb-3">
+                            <div class="info-label">Region</div>
+                            <div class="info-value">${provider.region}</div>
+                        </div>
+                        ` : ''}
+                        ${provider.base_url ? `
+                        <div class="mb-3">
+                            <div class="info-label">Base URL</div>
+                            <div class="info-value"><code class="small">${provider.base_url}</code></div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="col-md-8">
+                        <h6 class="mb-3">Available Models (${provider.models.length})</h6>
+                        <div class="model-list" style="max-height: 350px; overflow-y: auto;">
+                            ${provider.models.length > 0 ? `
+                                <div class="list-group list-group-flush">
+                                    ${provider.models.map(model => `
+                                        <div class="list-group-item bg-transparent border-secondary py-2">
+                                            <div class="d-flex justify-content-between align-items-center">
+                                                <span>
+                                                    <i class="bi bi-robot text-muted me-2"></i>
+                                                    ${model.display_name}
+                                                </span>
+                                            </div>
+                                            <code class="small text-muted">${model.model_id}</code>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : `
+                                <div class="text-muted text-center py-4">
+                                    <i class="bi bi-info-circle fs-2 d-block mb-2"></i>
+                                    <p class="mb-0">No models available from this provider</p>
+                                    <small>Check the provider connection or configuration</small>
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    {% if cost_tracking_enabled %}
+    // Add costs card if this is AWS
+    if (providerType === 'aws') {
+        html += `
+            <div class="card mt-4" style="border-left: 4px solid #ff9900;">
+                <div class="card-header bg-warning text-dark">
+                    <i class="bi bi-currency-dollar"></i> AWS Bedrock Usage Costs
+                </div>
+                <div class="card-body" id="costs-info">
+                    <div class="text-center py-3">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <span class="ms-2">Loading costs...</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        setTimeout(loadCosts, 100);
+    }
+    {% endif %}
+
+    document.getElementById('selected-provider-details').innerHTML = html;
+}
+
+// Update user identity on System tab
+function updateUserIdentity() {
+    const container = document.getElementById('user-identity');
+
+    const userGuid = providerData?.user_guid || 'Not available';
+
+    container.innerHTML = `
+        <div class="mb-3">
+            <div class="info-label">User GUID</div>
+            <div class="info-value">
+                <code class="text-break">${userGuid}</code>
+            </div>
+        </div>
+        <div class="text-muted small">
+            <i class="bi bi-info-circle"></i>
+            This unique identifier is used for database isolation and multi-user support when using shared databases.
+        </div>
+    `;
+}
+
+// Get auth method display name
+function getAuthMethodDisplay(method) {
+    const methods = {
+        'sso_profile': 'SSO Profile',
+        'api_keys': 'API Keys',
+        'api_key': 'API Key',
+        'local': 'Local',
+        'iam_role': 'IAM Role',
+        'default': 'Default Credentials'
+    };
+    return methods[method] || method || 'Unknown';
+}
+
+// Global state for tools
+let allTools = [];
+let mcpServers = [];
+let selectedToolSource = null;
+
+// Load MCP servers and tools for Integrations tab
+async function loadMCPServers() {
+    try {
+        const response = await fetch('/api/mcp/servers');
+        mcpServers = await response.json();
+
+        // Update Overview tab MCP status badge
+        const badge = document.getElementById('mcp-status-badge');
+        if (mcpServers.length === 0) {
+            badge.className = 'badge bg-secondary';
+            badge.textContent = 'Disabled';
+        } else {
+            const connectedCount = mcpServers.filter(s => s.connected).length;
+            badge.className = connectedCount === mcpServers.length ? 'badge bg-success' : 'badge bg-warning';
+            badge.textContent = `${connectedCount}/${mcpServers.length} Connected`;
+        }
+
+        // Load tool sources list for Integrations tab
+        updateToolSourcesList();
+
+    } catch (error) {
+        console.error('Error loading MCP servers:', error);
+        document.getElementById('mcp-status-badge').className = 'badge bg-danger';
+        document.getElementById('mcp-status-badge').textContent = 'Error';
+        document.getElementById('tool-sources-list').innerHTML = `
+            <div class="p-3 text-center text-danger">
+                <i class="bi bi-exclamation-triangle-fill"></i> Failed to load tools
+            </div>
+        `;
+    }
+}
+
+// Update the tool sources list in Integrations tab
+function updateToolSourcesList() {
+    const container = document.getElementById('tool-sources-list');
+
+    let html = '<div class="list-group list-group-flush">';
+
+    // Add embedded tools item
+    html += `
+        <a href="#" class="list-group-item list-group-item-action" onclick="selectToolSource('embedded', event)">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <i class="bi bi-box-fill text-info me-2"></i>
+                    <strong>Embedded Tools</strong>
+                </div>
+                <span class="badge bg-info">Built-in</span>
+            </div>
+            <small class="text-muted">Core application tools</small>
+        </a>
+    `;
+
+    // Add MCP servers
+    if (mcpServers.length > 0) {
+        mcpServers.forEach(server => {
+            const statusClass = server.connected ? 'success' : 'danger';
+            const statusIcon = server.connected ? 'check-circle-fill' : 'x-circle-fill';
+            html += `
+                <a href="#" class="list-group-item list-group-item-action" onclick="selectToolSource('mcp:${server.name}', event)">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <i class="bi bi-${statusIcon} text-${statusClass} me-2"></i>
+                            <strong>${server.name}</strong>
+                        </div>
+                        <span class="badge bg-secondary">${server.tool_count} tools</span>
+                    </div>
+                    <small class="text-muted">${server.transport} • MCP Server</small>
+                </a>
+            `;
+        });
+    } else {
+        html += `
+            <div class="list-group-item text-muted small">
+                <i class="bi bi-info-circle"></i> No MCP servers configured
+            </div>
+        `;
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+
+    // Auto-select embedded tools
+    selectToolSource('embedded');
+}
+
+// Select a tool source and show its tools
+async function selectToolSource(source, event) {
+    if (event) event.preventDefault();
+    selectedToolSource = source;
+
+    // Update active state in list
+    document.querySelectorAll('#tool-sources-list .list-group-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    if (event) {
+        event.target.closest('.list-group-item').classList.add('active');
+    }
+
+    const headerEl = document.getElementById('tool-details-header');
+    const contentEl = document.getElementById('tool-details-content');
+
+    if (source === 'embedded') {
+        // Show embedded tools
+        headerEl.innerHTML = '<i class="bi bi-box-fill"></i> Embedded Tools';
+        contentEl.innerHTML = `
+            <div class="list-group list-group-flush">
+                <div class="list-group-item bg-transparent border-secondary">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>execute_mcp_tool</strong>
+                            <p class="text-muted small mb-0 mt-1">Execute a tool provided by an MCP server</p>
+                        </div>
+                        <span class="badge bg-info">Core</span>
+                    </div>
+                </div>
+                <div class="list-group-item bg-transparent border-secondary">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>conversation_search</strong>
+                            <p class="text-muted small mb-0 mt-1">Search through conversation history</p>
+                        </div>
+                        <span class="badge bg-info">Core</span>
+                    </div>
+                </div>
+                <div class="list-group-item bg-transparent border-secondary">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>file_attachment</strong>
+                            <p class="text-muted small mb-0 mt-1">Attach files to the conversation context</p>
+                        </div>
+                        <span class="badge bg-info">Core</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else if (source.startsWith('mcp:')) {
+        // Show MCP server tools
+        const serverName = source.substring(4);
+        const server = mcpServers.find(s => s.name === serverName);
+
+        headerEl.innerHTML = `<i class="bi bi-hdd-network-fill"></i> ${serverName} Tools`;
+
+        if (!server || !server.connected) {
+            contentEl.innerHTML = `
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    Server is not connected. Tools cannot be retrieved.
+                </div>
+            `;
+            return;
+        }
+
+        // Fetch tools from API
+        contentEl.innerHTML = `
+            <div class="text-center py-4">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span class="ms-2">Loading tools...</span>
+            </div>
+        `;
+
+        try {
+            const response = await fetch('/api/mcp/tools?server=' + encodeURIComponent(serverName));
+            const tools = await response.json();
+
+            if (tools.length === 0) {
+                contentEl.innerHTML = `
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                        <p class="mb-0">No tools available from this server</p>
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">';
+            tools.forEach(tool => {
+                html += `
+                    <div class="list-group-item bg-transparent border-secondary">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>${tool.name}</strong>
+                                <p class="text-muted small mb-0 mt-1">${tool.description || 'No description available'}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            contentEl.innerHTML = html;
+
+        } catch (error) {
+            console.error('Error loading tools:', error);
+            contentEl.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    Failed to load tools from server
+                </div>
+            `;
+        }
+    }
+}
+
+{% if cost_tracking_enabled %}
+// Load cost information
+async function loadCosts() {
+    try {
+        const [lastMonth, last24Hours] = await Promise.all([
+            fetch('/api/costs/last-month').then(r => r.json()),
+            fetch('/api/costs/last-24-hours').then(r => r.json())
+        ]);
+
+        const container = document.getElementById('costs-info');
+        if (!container) return;
+
+        let html = '';
+
+        // Last Month
+        html += `
+            <div class="mb-3">
+                <div class="info-label">Last Month</div>
+                <div class="fs-4 fw-bold text-success">$${lastMonth.total.toFixed(2)}</div>
+        `;
+        if (Object.keys(lastMonth.models).length > 0) {
+            html += '<div class="small text-muted mt-1">';
+            const sorted = Object.entries(lastMonth.models).sort((a, b) => b[1].cost - a[1].cost).slice(0, 3);
+            sorted.forEach(([model, data]) => {
+                html += `<div>${model}: $${data.cost.toFixed(2)}</div>`;
+            });
+            html += '</div>';
+        }
+        html += '</div>';
+
+        // Last 24 Hours
+        html += `
+            <div>
+                <div class="info-label">Last 24 Hours</div>
+                <div class="fs-5 fw-bold">$${last24Hours.total.toFixed(2)}</div>
+            </div>
+        `;
+
+        container.innerHTML = html;
+
+    } catch (error) {
+        console.error('Error loading costs:', error);
+        const container = document.getElementById('costs-info');
+        if (container) {
+            container.innerHTML = `
+                <div class="text-muted small text-center">
+                    <i class="bi bi-info-circle"></i> Cost data not available
+                </div>
+            `;
+        }
+    }
+}
+
+// Refresh costs
+async function refreshCosts() {
+    const btn = event.target.closest('button');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-arrow-clockwise spin"></i> Refreshing...';
+
+    try {
+        await fetch('/api/costs/refresh', { method: 'POST' });
+        await loadCosts();
+        btn.innerHTML = '<i class="bi bi-check-circle-fill text-success"></i> Refreshed';
+    } catch (error) {
+        btn.innerHTML = '<i class="bi bi-exclamation-triangle-fill text-danger"></i> Failed';
+    }
+
+    setTimeout(() => {
+        btn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Refresh AWS Costs';
+        btn.disabled = false;
+    }, 2000);
+}
+{% endif %}
+
+// Confirm quit
+function confirmQuit(event) {
+    event.preventDefault();
+    if (confirm('Are you sure you want to quit? This will shut down the web server.')) {
+        window.location.href = '/quit';
+    }
+}
+
+// Load all data on page load
+window.addEventListener('load', loadAllData);
+</script>
+{% endblock %}

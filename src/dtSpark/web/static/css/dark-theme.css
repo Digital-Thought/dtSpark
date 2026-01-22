@@ -1,0 +1,427 @@
+/**
+ * Custom dark theme CSS for Spark web interface
+ *
+ * Enhances Bootstrap 5 dark theme with custom colours and styling
+ */
+
+:root {
+    --spark-cyan: #00bcd4;
+    --spark-green: #4caf50;
+    --spark-dark-bg: #1a1a1a;
+    --spark-card-bg: #2a2a2a;
+    --spark-border-color: #404040;
+}
+
+body {
+    background-color: var(--spark-dark-bg);
+    color: #e0e0e0;
+}
+
+/* Cards */
+.card {
+    background-color: var(--spark-card-bg);
+    border-color: var(--spark-border-color);
+}
+
+.card-header {
+    border-bottom-color: var(--spark-border-color);
+}
+
+/* List groups */
+.list-group-item {
+    background-color: var(--spark-card-bg);
+    border-color: var(--spark-border-color);
+    color: #e0e0e0;
+}
+
+.list-group-item-action:hover {
+    background-color: #353535;
+}
+
+/* Forms */
+.form-control,
+.form-select {
+    background-color: #2a2a2a;
+    border-color: var(--spark-border-color);
+    color: #e0e0e0;
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: #2a2a2a;
+    border-color: var(--spark-cyan);
+    color: #e0e0e0;
+    box-shadow: 0 0 0 0.25rem rgba(0, 188, 212, 0.25);
+}
+
+/* Chat messages */
+.chat-message {
+    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+}
+
+.chat-message.user {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    margin-left: 20%;
+}
+
+.chat-message.assistant {
+    background-color: #3a3a3a;
+    margin-right: 20%;
+}
+
+.chat-message.system {
+    background-color: #2a4a2a;
+    font-style: italic;
+    text-align: center;
+}
+
+.chat-message .message-header {
+    font-size: 0.85rem;
+    opacity: 0.8;
+    margin-bottom: 0.5rem;
+}
+
+.chat-message .message-content {
+    word-wrap: break-word;
+}
+
+.chat-message .message-content code {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+}
+
+.chat-message .message-content pre {
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+}
+
+/* Tool calls */
+.tool-call {
+    background-color: #2a3a4a;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    border-radius: 0.25rem;
+}
+
+.tool-result {
+    background-color: #3a3a2a;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    border-radius: 0.25rem;
+}
+
+/* Rollup summary */
+.chat-message.rollup-summary {
+    background-color: #2a4a3a;
+    font-style: italic;
+    margin: 1rem 0;
+}
+
+/* Buttons */
+.btn-primary {
+    background-color: var(--spark-cyan);
+    border-color: var(--spark-cyan);
+    color: #000;
+}
+
+.btn-primary:hover {
+    background-color: #00a5bb;
+    border-color: #00a5bb;
+}
+
+.btn-success {
+    background-color: var(--spark-green);
+    border-color: var(--spark-green);
+}
+
+.btn-success:hover {
+    background-color: #45a049;
+    border-color: #45a049;
+}
+
+/* Navbar */
+.navbar-dark {
+    background-color: #1a1a1a !important;
+    border-bottom: 1px solid var(--spark-border-color);
+}
+
+/* Footer */
+.footer {
+    border-top: 1px solid var(--spark-border-color);
+}
+
+/* Spinners */
+.spinner-border {
+    color: var(--spark-cyan);
+}
+
+/* Animations */
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+/* Scrollbar customisation */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--spark-dark-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--spark-border-color);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #505050;
+}
+
+/* Code blocks in markdown */
+.markdown-content pre {
+    background-color: rgba(0, 0, 0, 0.5);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+}
+
+.markdown-content code {
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+}
+
+/* Alerts */
+.alert-info {
+    background-color: #1a3a4a;
+    border-color: var(--spark-cyan);
+    color: #e0e0e0;
+}
+
+.alert-warning {
+    background-color: #4a3a1a;
+    border-color: #ffa726;
+    color: #e0e0e0;
+}
+
+.alert-danger {
+    background-color: #4a1a1a;
+    border-color: #f44336;
+    color: #e0e0e0;
+}
+
+.alert-success {
+    background-color: #1a4a1a;
+    border-color: var(--spark-green);
+    color: #e0e0e0;
+}
+
+/* Modal */
+.modal-content {
+    background-color: var(--spark-card-bg);
+    border-color: var(--spark-border-color);
+}
+
+.modal-header,
+.modal-footer {
+    border-color: var(--spark-border-color);
+}
+
+/* Copy icon button */
+.copy-icon-btn {
+    color: rgba(255, 255, 255, 0.5);
+    opacity: 0.6;
+    transition: opacity 0.2s, color 0.2s;
+    text-decoration: none;
+}
+
+.copy-icon-btn:hover {
+    color: var(--spark-cyan);
+    opacity: 1;
+}
+
+.copy-icon-btn:focus {
+    box-shadow: none;
+}
+
+.chat-message.user .copy-icon-btn {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-message.user .copy-icon-btn:hover {
+    color: #fff;
+}
+
+/* Mermaid diagram styling */
+.mermaid-container {
+    margin: 1rem 0;
+    overflow-x: auto;
+}
+
+.mermaid-diagram {
+    background-color: #1a1a1a;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    text-align: center;
+    position: relative;
+}
+
+.mermaid-diagram svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.mermaid-svg-container {
+    display: inline-block;
+}
+
+/* Diagram copy button */
+.diagram-copy-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    background-color: rgba(42, 42, 42, 0.8);
+    border: 1px solid var(--spark-border-color);
+    color: rgba(255, 255, 255, 0.6);
+    padding: 0.25rem 0.5rem;
+    opacity: 0;
+    transition: opacity 0.2s, background-color 0.2s, color 0.2s;
+    z-index: 10;
+}
+
+.mermaid-diagram:hover .diagram-copy-btn {
+    opacity: 1;
+}
+
+.diagram-copy-btn:hover {
+    background-color: var(--spark-card-bg);
+    color: var(--spark-cyan);
+    border-color: var(--spark-cyan);
+}
+
+.diagram-copy-btn:focus {
+    box-shadow: 0 0 0 0.2rem rgba(0, 188, 212, 0.25);
+}
+
+.mermaid-error {
+    background-color: rgba(244, 67, 54, 0.1);
+    border: 1px solid #f44336;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    color: #ff8a80;
+}
+
+.mermaid-error .text-danger {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: bold;
+}
+
+/* Highlight.js code block styling */
+.chat-message .message-content pre code.hljs {
+    background-color: transparent;
+    padding: 0;
+}
+
+.chat-message .message-content pre {
+    background-color: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    overflow-x: auto;
+}
+
+.chat-message .message-content code:not(.hljs) {
+    background-color: rgba(110, 118, 129, 0.3);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+
+/* Markdown content styling */
+.markdown-content pre {
+    background-color: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    overflow-x: auto;
+    margin: 1rem 0;
+}
+
+.markdown-content pre code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+}
+
+.markdown-content code {
+    background-color: rgba(110, 118, 129, 0.3);
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+
+.markdown-content blockquote {
+    border-left: 4px solid var(--spark-cyan);
+    padding-left: 1rem;
+    margin-left: 0;
+    color: #9e9e9e;
+}
+
+.markdown-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1rem 0;
+}
+
+.markdown-content th,
+.markdown-content td {
+    border: 1px solid var(--spark-border-color);
+    padding: 0.5rem;
+}
+
+.markdown-content th {
+    background-color: #2a2a2a;
+}
+
+.markdown-content hr {
+    border: none;
+    border-top: 1px solid var(--spark-border-color);
+    margin: 1.5rem 0;
+}
+
+/* AI Creation Chat Interface */
+#aiChatMessages {
+    background-color: var(--spark-dark-bg) !important;
+    border-color: var(--spark-border-color) !important;
+}
+
+#aiChatMessages .bg-white {
+    background-color: var(--spark-card-bg) !important;
+    border-color: var(--spark-border-color) !important;
+    color: #e0e0e0;
+}
+
+#aiChatMessages .bg-primary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+}
+
+#aiTypingIndicator {
+    color: #9e9e9e;
+}

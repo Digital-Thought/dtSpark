@@ -1,0 +1,578 @@
+"""
+Bedrock service module for interacting with AWS Bedrock models.
+
+This module provides functionality for:
+- Listing available Bedrock foundation models
+- Invoking models for chat completions
+- Handling model-specific message formatting
+"""
+
+import json
+import logging
+from typing import List, Dict, Optional, Any
+from botocore.exceptions import ClientError
+import tiktoken
+
+from dtSpark.llm.base import LLMService
+
+
+class BedrockService(LLMService):
+    """Manages interactions with AWS Bedrock foundation models."""
+
+    def __init__(self, bedrock_client, bedrock_runtime_client):
+        """
+        Initialise the Bedrock service.
+
+        Args:
+            bedrock_client: Boto3 Bedrock client for control plane operations
+            bedrock_runtime_client: Boto3 Bedrock Runtime client for inference
+        """
+        self.bedrock_client = bedrock_client
+        self.bedrock_runtime_client = bedrock_runtime_client
+        self.current_model_id = None
+        self.is_inference_profile = False
+        self.model_identifier = None
+
+    def get_provider_name(self) -> str:
+        """Get provider name."""
+        return "AWS Bedrock"
+
+    def get_access_info(self) -> str:
+        """Get access information."""
+        return "AWS Bedrock"
+
+    def supports_streaming(self) -> bool:
+        """Check if streaming is supported."""
+        return False  # Not currently implemented
+
+    def list_available_models(self) -> List[Dict[str, Any]]:
+        """
+        List all available Bedrock inference profiles.
+
+        Note: Only inference profiles are shown as they are the recommended
+        and supported way to invoke models, especially newer models like Claude Sonnet 4.
+
+        Returns:
+            List of inference profile dictionaries with id, name, and provider information
+        """
+        models = []
+
+        # Get inference profiles (recommended approach)
+        try:
+            response = self.bedrock_client.list_inference_profiles()
+
+            for profile in response.get('inferenceProfileSummaries', []):
+                # Only include ACTIVE profiles
+                if profile.get('status') != 'ACTIVE':
+                    continue
+
+                # Extract model info from the profile
+                profile_models = profile.get('models', [])
+                model_id = profile_models[0].get('modelArn', '').split('/')[-1] if profile_models else 'unknown'
+                profile_name_lower = profile['inferenceProfileName'].lower()
+                model_id_lower = model_id.lower()
+
+                # Filter out embedding models (they can't be used for chat)
+                if 'embed' in profile_name_lower or 'embed' in model_id_lower:
+                    logging.debug(f"Skipping embedding model: {profile['inferenceProfileName']}")
+                    continue
+
+                # Filter out image/vision-only models
+                if 'stable-diffusion' in profile_name_lower or 'stable-diffusion' in model_id_lower:
+                    logging.debug(f"Skipping image generation model: {profile['inferenceProfileName']}")
+                    continue
+
+                # Verify access to the underlying foundation model
+                # Check if the model has been granted access
+                try:
+                    # Try to get the foundation model details to verify access
+                    if profile_models and len(profile_models) > 0:
+                        foundation_model_arn = profile_models[0].get('modelArn', '')
+                        if foundation_model_arn:
+                            # Extract the model ID from the ARN
+                            foundation_model_id = foundation_model_arn.split('/')[-1]
+                            try:
+                                # Attempt to get foundation model details
+                                self.bedrock_client.get_foundation_model(modelIdentifier=foundation_model_id)
+                            except ClientError as model_error:
+                                # If we get access denied or validation error, skip this model
+                                error_code = model_error.response.get('Error', {}).get('Code', '')
+                                if error_code in ['AccessDeniedException', 'ValidationException', 'ResourceNotFoundException']:
+                                    logging.debug(f"Skipping model without access: {profile['inferenceProfileName']} ({error_code})")
+                                    continue
+                                # For other errors, log but continue (might be accessible)
+                                logging.debug(f"Could not verify access for {profile['inferenceProfileName']}: {error_code}")
+                except Exception as verify_error:
+                    logging.debug(f"Error verifying model access for {profile['inferenceProfileName']}: {verify_error}")
+                    # If we can't verify, skip it to be safe
+                    continue
+
+                # Determine model maker from model ID or profile name
+                model_maker = 'Unknown'
+
+                if 'anthropic' in model_id_lower or 'anthropic' in profile_name_lower or 'claude' in profile_name_lower:
+                    model_maker = 'Anthropic'
+                elif 'amazon' in model_id_lower or 'amazon' in profile_name_lower or 'titan' in profile_name_lower:
+                    model_maker = 'Amazon'
+                elif 'meta' in model_id_lower or 'meta' in profile_name_lower or 'llama' in profile_name_lower:
+                    model_maker = 'Meta'
+                elif 'ai21' in model_id_lower or 'ai21' in profile_name_lower or 'jamba' in profile_name_lower:
+                    model_maker = 'AI21'
+                elif 'cohere' in model_id_lower or 'cohere' in profile_name_lower:
+                    model_maker = 'Cohere'
+                elif 'mistral' in model_id_lower or 'mistral' in profile_name_lower:
+                    model_maker = 'Mistral'
+
+                models.append({
+                    'id': profile['inferenceProfileArn'],
+                    'name': profile['inferenceProfileName'],
+                    'model_maker': model_maker,  # Model creator (Anthropic, Meta, etc.)
+                    # 'provider' will be added by LLM manager to indicate service (AWS Bedrock)
+                    'access_info': self.get_access_info(),
+                    'input_modalities': ['TEXT'],
+                    'output_modalities': ['TEXT'],
+                    'response_streaming': True,
+                    'type': 'profile'
+                })
+
+            logging.info(f"Found {len(models)} active inference profiles")
+
+        except ClientError as e:
+            logging.error(f"Failed to list inference profiles: {e}")
+        except Exception as e:
+            logging.error(f"Unexpected error listing inference profiles: {e}")
+
+        # Sort models by model maker and name for better display
+        models.sort(key=lambda x: (x.get('model_maker', 'Unknown'), x['name']))
+
+        logging.info(f"Total available models: {len(models)}")
+        return models
+
+    def set_model(self, model_id: str):
+        """
+        Set the current model for chat operations.
+
+        Args:
+            model_id: The Bedrock model ID or inference profile ARN to use
+        """
+        self.current_model_id = model_id
+        # Check if this is an inference profile ARN
+        self.is_inference_profile = model_id.startswith('arn:aws:bedrock:')
+
+        # Extract the actual model identifier for format detection
+        if self.is_inference_profile:
+            # Extract model ID from ARN like: arn:aws:bedrock:region:account:inference-profile/us.anthropic.claude-...
+            parts = model_id.split('/')
+            if len(parts) > 1:
+                # Get the profile identifier (e.g., us.anthropic.claude-sonnet-4-...)
+                self.model_identifier = parts[-1]
+            else:
+                self.model_identifier = model_id
+        else:
+            self.model_identifier = model_id
+
+        logging.info(f"{'Inference profile' if self.is_inference_profile else 'Model'} set to: {model_id}")
+
+    def invoke_model(self, messages: List[Dict[str, str]], max_tokens: int = 4096,
+                    temperature: float = 0.7, tools: Optional[List[Dict[str, Any]]] = None,
+                    system: Optional[str] = None, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+        """
+        Invoke the current model or inference profile with a list of messages.
+        Includes automatic retry logic for transient failures.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            max_tokens: Maximum tokens to generate
+            temperature: Model temperature (0.0 to 1.0)
+            tools: Optional list of tool definitions for the model to use
+            system: Optional system prompt/instructions for the model
+            max_retries: Maximum number of retry attempts for transient failures
+
+        Returns:
+            Response dictionary with content and metadata, or error dictionary on failure
+        """
+        if not self.current_model_id:
+            logging.error("No model selected. Please set a model first.")
+            return {
+                'error': True,
+                'error_code': 'NoModelSelected',
+                'error_message': 'No model selected. Please set a model first.',
+                'error_type': 'ConfigurationError'
+            }
+
+        # Transient error codes that should be retried
+        transient_errors = [
+            'ThrottlingException',
+            'TooManyRequestsException',
+            'ModelTimeoutException',
+            'ServiceUnavailableException',
+            'InternalServerError',
+            'ModelNotReadyException',
+            'ModelStreamErrorException'
+        ]
+
+        import time
+        attempt = 0
+
+        while attempt <= max_retries:
+            if attempt > 1:
+                logging.info(f"Retry attempt {attempt}/{max_retries} for model invocation")
+
+            try:
+                # Format the request based on the model provider
+                request_body = self._format_request(messages, max_tokens, temperature, tools, system)
+
+                # Invoke the model or inference profile
+                # Note: modelId parameter accepts both model IDs and inference profile ARNs
+                logging.debug(f"Invoking {'inference profile' if self.is_inference_profile else 'model'}: {self.current_model_id}")
+
+                # Log the request for debugging
+                logging.debug(f"Request body keys: {list(request_body.keys())}")
+                if 'tools' in request_body:
+                    logging.debug(f"Tools count: {len(request_body['tools'])}")
+                logging.debug(f"max_tokens is set to {max_tokens}")
+                try:
+                    response = self.bedrock_runtime_client.invoke_model(
+                        modelId=self.current_model_id,
+                        contentType='application/json',
+                        accept='application/json',
+                        body=json.dumps(request_body)
+                    )
+                except Exception as api_error:
+                    logging.error(f"Bedrock API error: {api_error}")
+                    logging.error(f"Request body: {json.dumps(request_body, indent=2)}")
+                    raise
+
+                # Parse the response
+                response_body = json.loads(response['body'].read())
+                parsed_response = self._parse_response(response_body)
+
+                logging.debug(f"{'Inference profile' if self.is_inference_profile else 'Model'} invoked successfully: {self.current_model_id}")
+                return parsed_response
+
+            except ClientError as e:
+                error_code = e.response['Error']['Code']
+                error_message = e.response['Error']['Message']
+
+                # Log detailed error information
+                logging.error(f"Bedrock API error - Code: {error_code}, Message: {error_message}")
+
+                # Check if this is a transient error that should be retried
+                if error_code in transient_errors and attempt <= max_retries:
+                    wait_time = min(2 ** (attempt - 1), 30)  # Exponential backoff, max 30 seconds
+                    logging.warning(f"Transient error {error_code}, retrying in {wait_time} seconds... (attempt {attempt}/{max_retries})")
+                    time.sleep(wait_time)
+                    continue  # Retry
+
+                # Non-transient error or max retries reached - return error details
+                return {
+                    'error': True,
+                    'error_code': error_code,
+                    'error_message': error_message,
+                    'error_type': 'ClientError',
+                    'retries_attempted': attempt - 1
+                }
+
+            except Exception as e:
+                logging.error(f"Unexpected error invoking {'inference profile' if self.is_inference_profile else 'model'}: {e}")
+                logging.error(f"Error type: {type(e).__name__}")
+                import traceback
+                logging.error(f"Traceback: {traceback.format_exc()}")
+
+                # Return error details (unexpected errors are not retried)
+                return {
+                    'error': True,
+                    'error_code': type(e).__name__,
+                    'error_message': str(e),
+                    'error_type': 'Exception',
+                    'retries_attempted': 0
+                }
+
+        # Should not reach here, but just in case
+        return {
+            'error': True,
+            'error_code': 'MaxRetriesExceeded',
+            'error_message': f'Max retries ({max_retries}) exceeded',
+            'error_type': 'RetryError',
+            'retries_attempted': max_retries
+        }
+
+    def _format_request(self, messages: List[Dict[str, str]], max_tokens: int,
+                       temperature: float, tools: Optional[List[Dict[str, Any]]] = None,
+                       system: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Format the request body based on the model provider.
+
+        Args:
+            messages: List of message dictionaries
+            max_tokens: Maximum tokens to generate
+            temperature: Model temperature
+            tools: Optional list of tool definitions
+            system: Optional system prompt/instructions
+
+        Returns:
+            Formatted request body dictionary
+        """
+        # Use model_identifier for provider detection (works for both direct models and profiles)
+        model_id = self.model_identifier or self.current_model_id
+
+        # Anthropic Claude models
+        if 'anthropic.claude' in model_id or 'anthropic' in model_id.lower():
+            request_body = {
+                'anthropic_version': 'bedrock-2023-05-31',
+                'max_tokens': max_tokens,
+                'temperature': temperature,
+                'messages': messages
+            }
+
+            # Add system prompt if provided (Claude supports system prompts)
+            if system:
+                request_body['system'] = system
+                logging.debug(f"Added system prompt: {system[:50]}...")
+
+            # Add tools if provided (Claude supports tools)
+            if tools and len(tools) > 0:
+                request_body['tools'] = tools
+                logging.debug(f"Added {len(tools)} tools to request")
+
+            return request_body
+
+        # Amazon Titan models
+        elif 'amazon.titan' in model_id or 'titan' in model_id.lower():
+            # Titan uses a different format
+            text_generation_config = {
+                'maxTokenCount': max_tokens,
+                'temperature': temperature,
+                'topP': 0.9
+            }
+
+            # Combine messages into a single prompt for Titan
+            prompt = self._messages_to_prompt(messages)
+
+            return {
+                'inputText': prompt,
+                'textGenerationConfig': text_generation_config
+            }
+
+        # Meta Llama models
+        elif 'meta.llama' in model_id or 'llama' in model_id.lower():
+            prompt = self._messages_to_prompt(messages)
+            return {
+                'prompt': prompt,
+                'max_gen_len': max_tokens,
+                'temperature': temperature,
+                'top_p': 0.9
+            }
+
+        # AI21 models
+        elif 'ai21' in model_id:
+            prompt = self._messages_to_prompt(messages)
+            return {
+                'prompt': prompt,
+                'maxTokens': max_tokens,
+                'temperature': temperature
+            }
+
+        # Cohere models
+        elif 'cohere' in model_id:
+            prompt = self._messages_to_prompt(messages)
+            return {
+                'prompt': prompt,
+                'max_tokens': max_tokens,
+                'temperature': temperature
+            }
+
+        # Default fallback to Anthropic format
+        else:
+            logging.warning(f"Unknown model provider for {model_id}, using default Anthropic format")
+            return {
+                'anthropic_version': 'bedrock-2023-05-31',
+                'max_tokens': max_tokens,
+                'temperature': temperature,
+                'messages': messages
+            }
+
+    def _parse_response(self, response_body: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Parse the model response based on the provider format.
+
+        Args:
+            response_body: Raw response body from the model
+
+        Returns:
+            Standardised response dictionary
+        """
+        # Use model_identifier for provider detection (works for both direct models and profiles)
+        model_id = self.model_identifier or self.current_model_id
+
+        # Anthropic Claude models
+        if 'anthropic.claude' in model_id or 'anthropic' in model_id.lower():
+            content_blocks = response_body.get('content', [])
+
+            # Parse content blocks (can be text or tool_use)
+            parsed_content = []
+            text_parts = []
+
+            for block in content_blocks:
+                if block.get('type') == 'text':
+                    text_parts.append(block.get('text', ''))
+                    parsed_content.append({
+                        'type': 'text',
+                        'text': block.get('text', '')
+                    })
+                elif block.get('type') == 'tool_use':
+                    parsed_content.append({
+                        'type': 'tool_use',
+                        'id': block.get('id'),
+                        'name': block.get('name'),
+                        'input': block.get('input', {})
+                    })
+
+            # Combine text for backwards compatibility
+            text = '\n'.join(text_parts) if text_parts else ''
+
+            return {
+                'content': text,
+                'content_blocks': parsed_content,
+                'stop_reason': response_body.get('stop_reason'),
+                'usage': response_body.get('usage', {})
+            }
+
+        # Amazon Titan models
+        elif 'amazon.titan' in model_id or 'titan' in model_id.lower():
+            results = response_body.get('results', [])
+            text = results[0].get('outputText', '') if results else ''
+
+            return {
+                'content': text,
+                'stop_reason': results[0].get('completionReason') if results else None,
+                'usage': {
+                    'input_tokens': response_body.get('inputTextTokenCount', 0),
+                    'output_tokens': response_body.get('results', [{}])[0].get('tokenCount', 0)
+                }
+            }
+
+        # Meta Llama models
+        elif 'meta.llama' in model_id or 'llama' in model_id.lower():
+            return {
+                'content': response_body.get('generation', ''),
+                'stop_reason': response_body.get('stop_reason'),
+                'usage': {
+                    'input_tokens': response_body.get('prompt_token_count', 0),
+                    'output_tokens': response_body.get('generation_token_count', 0)
+                }
+            }
+
+        # AI21 models
+        elif 'ai21' in model_id:
+            completions = response_body.get('completions', [])
+            text = completions[0].get('data', {}).get('text', '') if completions else ''
+
+            return {
+                'content': text,
+                'stop_reason': completions[0].get('finishReason', {}).get('reason') if completions else None,
+                'usage': {}
+            }
+
+        # Cohere models
+        elif 'cohere' in model_id:
+            generations = response_body.get('generations', [])
+            text = generations[0].get('text', '') if generations else ''
+
+            return {
+                'content': text,
+                'stop_reason': generations[0].get('finish_reason') if generations else None,
+                'usage': {}
+            }
+
+        # Default fallback
+        else:
+            return {
+                'content': str(response_body),
+                'stop_reason': None,
+                'usage': {}
+            }
+
+    def _messages_to_prompt(self, messages: List[Dict[str, str]]) -> str:
+        """
+        Convert messages list to a single prompt string for models that don't support message format.
+
+        Args:
+            messages: List of message dictionaries
+
+        Returns:
+            Formatted prompt string
+        """
+        prompt_parts = []
+        for msg in messages:
+            role = msg['role'].capitalize()
+            content = msg['content']
+            prompt_parts.append(f"{role}: {content}")
+
+        return '\n\n'.join(prompt_parts)
+
+    def count_tokens(self, text: str, model_id: Optional[str] = None) -> int:
+        """
+        Estimate token count for text using tiktoken.
+
+        Args:
+            text: Text to count tokens for
+            model_id: Optional model ID (uses current model if not specified)
+
+        Returns:
+            Estimated token count
+        """
+        try:
+            # Use cl100k_base encoding (used by Claude and most modern models)
+            encoding = tiktoken.get_encoding('cl100k_base')
+            tokens = encoding.encode(text)
+            return len(tokens)
+        except Exception as e:
+            logging.warning(f"Token counting failed: {e}, using character approximation")
+            # Fallback to character-based approximation (roughly 4 chars per token)
+            return len(text) // 4
+
+    def count_message_tokens(self, messages: List[Dict[str, str]], model_id: Optional[str] = None) -> int:
+        """
+        Estimate token count for a list of messages.
+
+        Args:
+            messages: List of message dictionaries with 'role' and 'content' keys
+            model_id: Optional model ID (uses current model if not specified)
+
+        Returns:
+            Estimated total token count for all messages
+        """
+        total_tokens = 0
+
+        for message in messages:
+            # Count tokens for role (small overhead)
+            total_tokens += 4  # Approximate overhead for role formatting
+
+            # Count tokens in content
+            content = message.get('content', '')
+
+            # Handle content that might be a list (for multi-part content)
+            if isinstance(content, list):
+                for part in content:
+                    if isinstance(part, dict):
+                        if 'text' in part:
+                            total_tokens += self.count_tokens(part['text'], model_id)
+                        # Add overhead for other content types (images, documents, etc.)
+                        elif 'image' in part or 'document' in part:
+                            total_tokens += 1000  # Rough estimate for non-text content
+                    elif isinstance(part, str):
+                        total_tokens += self.count_tokens(part, model_id)
+            elif isinstance(content, str):
+                total_tokens += self.count_tokens(content, model_id)
+
+        return total_tokens
+
+    def get_current_model_id(self) -> Optional[str]:
+        """
+        Get the currently selected model ID.
+
+        Returns:
+            Current model ID or None
+        """
+        return self.current_model_id

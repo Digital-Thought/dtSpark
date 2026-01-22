@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/digital-thought/dtSpark/tree/main/docs
+    about: Check the documentation for answers to common questions
+  - name: Security Issues
+    url: https://github.com/digital-thought/dtSpark/blob/main/SECURITY.md
+    about: Please report security vulnerabilities privately via email

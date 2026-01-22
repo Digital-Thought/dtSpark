@@ -1,0 +1,275 @@
+# Spark Configuration Example
+# Copy this file to your config directory and rename to config.yaml
+#
+# Config locations:
+#   Windows: %APPDATA%\dtSpark\config\config.yaml
+#   macOS:   ~/Library/Application Support/dtSpark/config/config.yaml
+#   Linux:   ~/.local/share/dtSpark/config/config.yaml
+#
+# Or run: spark --setup
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  level: INFO                    # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  rotation_backup_count: 5       # Number of log files to keep
+  log_to_console: false          # Also output logs to console
+
+# =============================================================================
+# DATABASE
+# =============================================================================
+database:
+  type: sqlite                   # sqlite, mysql, mariadb, postgresql, mssql
+
+  # MySQL/MariaDB (uncomment if using)
+  # mysql:
+  #   host: localhost
+  #   port: 3306
+  #   database: spark
+  #   username: null             # null = prompt on startup (recommended)
+  #   password: null             # null = prompt on startup (recommended)
+  #   ssl: false
+
+  # PostgreSQL (uncomment if using)
+  # postgresql:
+  #   host: localhost
+  #   port: 5432
+  #   database: spark
+  #   username: null
+  #   password: null
+  #   ssl: false
+
+  # Microsoft SQL Server (uncomment if using)
+  # mssql:
+  #   host: localhost
+  #   port: 1433
+  #   database: spark
+  #   username: null
+  #   password: null
+  #   ssl: false
+  #   driver: "ODBC Driver 17 for SQL Server"
+
+# =============================================================================
+# INTERFACE
+# =============================================================================
+interface:
+  type: cli                      # cli or web
+
+  web:
+    host: 127.0.0.1              # Localhost only for security
+    port: 0                      # 0 = random available port
+    session_timeout_minutes: 30
+    dark_theme: true
+    auto_open_browser: true
+
+    ssl:
+      enabled: true
+      auto_generate_cert: true   # Auto-generate self-signed certificate
+      cert_file: certs/ssl_cert.pem
+      key_file: certs/ssl_key.pem
+
+# =============================================================================
+# LLM PROVIDERS
+# =============================================================================
+llm_providers:
+  # Force specific model for all conversations (optional)
+  mandatory_model: null          # e.g., "claude-sonnet-4"
+  mandatory_provider: null       # e.g., "AWS Bedrock"
+
+  # AWS Bedrock
+  aws_bedrock:
+    enabled: true
+    region: us-east-1               # AWS region for Bedrock
+    sso_profile: default            # AWS SSO profile name (null = use default credentials)
+    credentials:
+      access_key_id: null           # Or use AWS_ACCESS_KEY_ID env var
+      secret_access_key: null       # Or use AWS_SECRET_ACCESS_KEY env var
+    cost_tracking:
+      enabled: false                # Enable cost tracking for Bedrock usage
+
+  # Ollama (local models)
+  ollama:
+    enabled: false
+    base_url: "http://localhost:11434"
+    verify_ssl: true                 # Set to false for self-signed certificates
+
+  # Anthropic Direct API
+  anthropic:
+    enabled: false
+    api_key: null                # Or use ANTHROPIC_API_KEY env var
+    rate_limit_max_retries: 5
+    rate_limit_base_delay: 2.0
+
+# =============================================================================
+# MODEL SETTINGS
+# =============================================================================
+bedrock:
+  max_tokens: 8192               # Maximum tokens per response
+  temperature: 0.7               # Creativity (0.0-1.0)
+  request_timeout: 300           # Timeout in seconds
+  # model_id: null               # Lock to specific model (optional)
+
+# =============================================================================
+# CONVERSATION SETTINGS
+# =============================================================================
+conversation:
+  # global_instructions_path: null  # Path to global instructions file
+
+  rollup_threshold: 0.3          # Trigger compaction at 30% of context window
+  rollup_summary_ratio: 0.3      # Target 30% of original size
+  max_tool_result_tokens: 10000  # Max tokens per tool result
+  max_tool_iterations: 25        # Max consecutive tool calls
+  max_tool_selections: 30        # Max tools per request
+  emergency_rollup_threshold: 0.95  # Force compaction at 95%
+
+# =============================================================================
+# MODEL CONTEXT LIMITS
+# =============================================================================
+model_context_limits:
+  # Anthropic Claude models
+  anthropic:
+    claude-opus-4:
+      context_window: 200000
+      max_output: 32000
+    claude-sonnet-4:
+      context_window: 200000
+      max_output: 64000
+    claude-3-5-sonnet:
+      context_window: 200000
+      max_output: 8192
+    default:
+      context_window: 200000
+      max_output: 4096
+
+  # AWS Bedrock models (non-Anthropic)
+  aws_bedrock:
+    amazon.titan-text-express:
+      context_window: 8192
+      max_output: 8192
+    meta.llama3-1:
+      context_window: 128000
+      max_output: 8192
+    default:
+      context_window: 8192
+      max_output: 4096
+
+  # Ollama local models
+  ollama:
+    llama3.2:
+      context_window: 128000
+      max_output: 8192
+    mistral:
+      context_window: 32000
+      max_output: 8192
+    default:
+      context_window: 4096
+      max_output: 2048
+
+  # Global default
+  default:
+    context_window: 8192
+    max_output: 4096
+
+# =============================================================================
+# TOKEN MANAGEMENT
+# =============================================================================
+token_management:
+  enabled: false                 # Enable token tracking
+  max_input_tokens: 100000       # Max input tokens in window
+  max_output_tokens: 50000       # Max output tokens in window
+  period_hours: 24               # Rolling window period
+  allow_override: true           # Allow temporary limit increases
+
+# =============================================================================
+# PROMPT SECURITY INSPECTION
+# =============================================================================
+prompt_inspection:
+  enabled: false
+  inspection_level: basic        # basic, standard, strict
+  action: warn                   # block, warn, sanitise, log_only
+
+  llm_inspection:
+    enabled: false
+    model: anthropic.claude-3-haiku-20240307-v1:0
+    provider: AWS Bedrock
+    max_tokens: 500
+    confidence_threshold: 0.7
+
+  patterns:
+    check_prompt_injection: true
+    check_jailbreak: true
+    check_code_injection: true
+    check_pii: false
+    check_excessive_length: true
+    max_prompt_length: 50000
+
+  log_violations: true
+  alert_on_repeated_violations: true
+  violation_threshold: 5
+
+# =============================================================================
+# MCP CONFIGURATION
+# =============================================================================
+mcp_config:
+  enabled: false
+  servers: []
+    # Example stdio server:
+    # - name: filesystem
+    #   transport: stdio
+    #   command: uvx
+    #   args:
+    #     - mcp-server-filesystem
+    #     - /path/to/directory
+    #   env:
+    #     SOME_VAR: value
+    #   enabled: true
+
+    # Example HTTP server:
+    # - name: remote-api
+    #   transport: http
+    #   url: http://localhost:8000/mcp
+    #   enabled: true
+
+# =============================================================================
+# EMBEDDED TOOLS
+# =============================================================================
+embedded_tools:
+  filesystem:
+    enabled: false
+    allowed_path: ./             # Root directory for file access
+    access_mode: read            # read or read_write
+
+# =============================================================================
+# TOOL PERMISSIONS
+# =============================================================================
+tool_permissions:
+  auto_approve: false            # true = skip permission prompts (dev only)
+
+# =============================================================================
+# AUTONOMOUS ACTIONS
+# =============================================================================
+# Autonomous actions are AI-driven scheduled tasks that run automatically.
+# They are configured through the CLI wizard or Web API, not via this file.
+#
+# Features:
+#   - Schedule one-off or recurring tasks using cron expressions
+#   - Each action has a locked model and explicit tool permissions
+#   - Results are stored in the database and can be exported
+#   - Actions auto-disable after configurable number of failures
+#
+# Database tables used:
+#   - autonomous_actions: Action definitions and schedules
+#   - action_runs: Execution history and results
+#   - action_tool_permissions: Snapshotted tool permissions per action
+#
+# Access via:
+#   - CLI: Main Menu > Manage Autonomous Actions
+#   - Web API: /api/actions endpoints
+#
+# Example cron expressions:
+#   "0 9 * * *"      - Every day at 9:00 AM
+#   "0 9 * * MON"    - Every Monday at 9:00 AM
+#   "0 */6 * * *"    - Every 6 hours
+#   "0 9 1 * *"      - First day of each month at 9:00 AM
+#   "0 9 * * MON-FRI"- Weekdays at 9:00 AM

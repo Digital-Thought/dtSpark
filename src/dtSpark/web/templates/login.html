@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Login - {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="card mt-5">
+            <div class="card-body">
+                <h3 class="card-title text-center mb-4">
+                    <i class="bi bi-shield-lock-fill"></i> Authentication Required
+                </h3>
+
+                {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    <i class="bi bi-exclamation-triangle-fill"></i> {{ error }}
+                </div>
+                {% endif %}
+
+                <p class="text-muted text-center mb-4">
+                    Enter the authentication code displayed in the CLI to access the web interface.
+                </p>
+
+                <form method="POST" action="/login">
+                    <div class="mb-3">
+                        <label for="code" class="form-label">Authentication Code</label>
+                        <input
+                            type="text"
+                            class="form-control form-control-lg text-center"
+                            id="code"
+                            name="code"
+                            placeholder="Enter code"
+                            required
+                            autofocus
+                            style="letter-spacing: 0.2em; font-family: monospace;"
+                            value="{{ code }}"
+                        >
+                        <div class="form-text">
+                            <i class="bi bi-info-circle"></i> This code can only be used once
+                        </div>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-key-fill"></i> Authenticate
+                        </button>
+                    </div>
+                </form>
+
+                <hr class="my-4">
+
+                <div class="text-center text-muted small">
+                    <i class="bi bi-shield-check"></i> Localhost only - Single session
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center mt-3 text-muted small">
+            <i class="bi bi-info-circle"></i> The authentication code is displayed when you start the web interface from the CLI
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Auto-focus on code input
+document.getElementById('code').focus();
+
+// Auto-capitalise input
+document.getElementById('code').addEventListener('input', function(e) {
+    e.target.value = e.target.value.toUpperCase();
+});
+
+// Auto-submit if code is pre-filled from URL
+document.addEventListener('DOMContentLoaded', function() {
+    const codeInput = document.getElementById('code');
+    const form = codeInput.closest('form');
+
+    // Check if code is pre-filled and non-empty
+    if (codeInput.value && codeInput.value.trim() !== '') {
+        console.log('Code pre-filled from URL, auto-submitting form');
+        // Add a small delay to let the user see the page loaded
+        setTimeout(function() {
+            form.submit();
+        }, 500);
+    }
+});
+</script>
+{% endblock %}
