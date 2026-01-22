@@ -95,6 +95,9 @@ Documentation = "https://github.com/digital-thought/dtSpark#readme"
 Repository = "https://github.com/digital-thought/dtSpark"
 Issues = "https://github.com/digital-thought/dtSpark/issues"
 
+[tool.poetry]
+name = "dtSpark"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
