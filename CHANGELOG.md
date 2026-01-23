@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.5]
+
+### Changed
+- Removed forced container mode - application now uses dtPyAppFramework default locations for configuration files
+
+---
+
 ## [1.0.4]
 
 ### Added
@@ -179,6 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.0.5 | Use default config locations instead of forced container mode |
 | 1.0.4 | Daemon mode for scheduled action execution |
 | 1.0.3 | MCP HTTP/SSE transport with authentication and SSL options |
 | 1.0.2 | Autonomous actions for scheduled AI tasks |
