@@ -13,9 +13,6 @@ Usage:
 """
 
 import sys
-import os
-
-os.environ['CONTAINER_MODE'] = 'true'
 
 def main():
     """
