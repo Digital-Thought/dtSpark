@@ -1836,11 +1836,11 @@ class AWSBedrockCLI(AbstractApp):
                     config_content
                 )
 
-            # Anthropic settings
+            # Anthropic settings - update api_key under anthropic section
             if use_anthropic and anthropic_api_key:
                 config_content = re.sub(
-                    r'(api_key:\s+")[^"]*(")',
-                    f'\\g<1>{anthropic_api_key}\\g<2>',
+                    r'(anthropic:\s*\n\s+enabled:\s+(?:true|false)\s*#[^\n]*\n\s+api_key:\s+)[^\s#]+',
+                    f'\\g<1>{anthropic_api_key}',
                     config_content
                 )
 

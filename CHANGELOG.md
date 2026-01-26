@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.7]
+
+### Fixed
+- Setup wizard now correctly writes Anthropic API key reference to config.yaml (was writing null)
+
+---
+
 ## [1.0.6]
 
 ### Security
@@ -194,6 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.0.7 | Fix Anthropic API key not written to config |
 | 1.0.6 | Secure secret input masking in setup wizard |
 | 1.0.5 | Use default config locations instead of forced container mode |
 | 1.0.4 | Daemon mode for scheduled action execution |
