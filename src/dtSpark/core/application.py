@@ -1384,7 +1384,8 @@ class AWSBedrockCLI(AbstractApp):
 
             anthropic_api_key_input = Prompt.ask(
                 "Anthropic API key (or press Enter to set via environment variable later)",
-                default=""
+                default="",
+                password=True
             )
 
             # Store API key in secrets manager if provided
@@ -1459,7 +1460,7 @@ class AWSBedrockCLI(AbstractApp):
             else:
                 db_username = "null"
 
-            db_password_input = Prompt.ask("Database password (or press Enter for null)", default="")
+            db_password_input = Prompt.ask("Database password (or press Enter for null)", default="", password=True)
 
             # Store database password in secrets manager if provided
             if db_password_input:
@@ -3210,6 +3211,7 @@ class AWSBedrockCLI(AbstractApp):
             # Point to the correct config location
             self.settings = Settings()
             self.settings.init_settings_readers()
+
 
             # Check if model is locked via configuration
             # Priority 1: Check for mandatory_model (forces model for ALL conversations)

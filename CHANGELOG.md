@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.6]
+
+### Security
+- Setup wizard now masks sensitive input (API keys, database passwords) during entry
+- Secrets are stored securely via dtPyAppFramework secrets_manager rather than in plain text config
+
+---
+
 ## [1.0.5]
 
 ### Changed
@@ -186,6 +194,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.0.6 | Secure secret input masking in setup wizard |
 | 1.0.5 | Use default config locations instead of forced container mode |
 | 1.0.4 | Daemon mode for scheduled action execution |
 | 1.0.3 | MCP HTTP/SSE transport with authentication and SSL options |
