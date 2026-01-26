@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.10]
+
+### Fixed
+- Setup wizard now creates config.yaml directly in user data directory (not in config subfolder)
+
+---
+
 ## [1.0.9]
 
 ### Changed
@@ -26,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `secrets.yaml` is deleted after successful ingestion
 - Setup wizard config location now respects `CONTAINER_MODE` environment variable:
   - If `CONTAINER_MODE=true`: config created in `./config/config.yaml` (working directory)
-  - Otherwise: config created in user data directory
+  - Otherwise: config created directly in user data directory
 
 ---
 
@@ -226,6 +233,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.0.10 | Fix config.yaml created in wrong directory |
 | 1.0.9 | Secrets written to secrets.yaml, CONTAINER_MODE config path support |
 | 1.0.8 | AWS Bedrock IAM/session authentication in setup wizard |
 | 1.0.7 | Fix Anthropic API key not written to config |

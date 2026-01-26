@@ -1283,13 +1283,13 @@ class AWSBedrockCLI(AbstractApp):
         # Destination: depends on CONTAINER_MODE environment variable
         container_mode = os.environ.get('CONTAINER_MODE', '').lower() == 'true'
         if container_mode:
-            # Container mode: use working directory
+            # Container mode: use working directory with config subfolder
             dest_config_dir = os.path.join(os.getcwd(), 'config')
             secrets_dir = os.getcwd()
         else:
-            # Normal mode: use user data directory
+            # Normal mode: use user data directory directly (no config subfolder)
             user_data_path = ApplicationPaths().usr_data_root_path
-            dest_config_dir = os.path.join(user_data_path, 'config')
+            dest_config_dir = user_data_path
             secrets_dir = user_data_path
 
         dest_config = os.path.join(dest_config_dir, 'config.yaml')
