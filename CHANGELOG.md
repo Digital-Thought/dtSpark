@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.9]
+
+### Changed
+- Setup wizard now writes secrets to `secrets.yaml` instead of directly to secrets manager
+  - Secrets are automatically ingested on next application startup
+  - `secrets.yaml` is deleted after successful ingestion
+- Setup wizard config location now respects `CONTAINER_MODE` environment variable:
+  - If `CONTAINER_MODE=true`: config created in `./config/config.yaml` (working directory)
+  - Otherwise: config created in user data directory
+
+---
+
 ## [1.0.8]
 
 ### Added
@@ -214,6 +226,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.0.9 | Secrets written to secrets.yaml, CONTAINER_MODE config path support |
 | 1.0.8 | AWS Bedrock IAM/session authentication in setup wizard |
 | 1.0.7 | Fix Anthropic API key not written to config |
 | 1.0.6 | Secure secret input masking in setup wizard |

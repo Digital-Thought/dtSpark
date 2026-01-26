@@ -124,6 +124,7 @@ class AWSBedrockCLI(AbstractApp):
         if value is not None:
             return value
 
+
         # Fallback: Navigate the dict manually
         parts = key.split('.')
         if len(parts) > 1:
@@ -1258,10 +1259,6 @@ class AWSBedrockCLI(AbstractApp):
         from dtSpark.cli_interface import CLIInterface
         cli = CLIInterface()
 
-        # Initialize secrets manager for storing sensitive credentials
-        from dtPyAppFramework.settings import Settings
-        secret_manager = Settings().secret_manager
-
         # Display SPARK splash screen
         cli.print_splash_screen(
             full_name=full_name(),
@@ -1283,10 +1280,23 @@ class AWSBedrockCLI(AbstractApp):
         ))
         cli.console.print()
 
-        # Destination: user data directory
-        user_data_path = ApplicationPaths().usr_data_root_path
-        dest_config_dir = os.path.join(user_data_path, 'config')
+        # Destination: depends on CONTAINER_MODE environment variable
+        container_mode = os.environ.get('CONTAINER_MODE', '').lower() == 'true'
+        if container_mode:
+            # Container mode: use working directory
+            dest_config_dir = os.path.join(os.getcwd(), 'config')
+            secrets_dir = os.getcwd()
+        else:
+            # Normal mode: use user data directory
+            user_data_path = ApplicationPaths().usr_data_root_path
+            dest_config_dir = os.path.join(user_data_path, 'config')
+            secrets_dir = user_data_path
+
         dest_config = os.path.join(dest_config_dir, 'config.yaml')
+        secrets_file = os.path.join(secrets_dir, 'secrets.yaml')
+
+        # Collection for secrets to be written to secrets.yaml
+        secrets_to_store = []
 
         cli.print_info(f"Configuration will be created at: {dest_config}")
         cli.console.print()
@@ -1398,7 +1408,7 @@ class AWSBedrockCLI(AbstractApp):
                 )
 
                 cli.console.print()
-                cli.console.print("[dim]AWS Credentials (stored securely in secrets manager):[/dim]")
+                cli.console.print("[dim]AWS Credentials (will be stored in secrets.yaml for secure ingestion):[/dim]")
 
                 # Access Key ID (not typically considered secret, but mask anyway for consistency)
                 aws_access_key_id_input = Prompt.ask(
@@ -1406,9 +1416,8 @@ class AWSBedrockCLI(AbstractApp):
                     default=""
                 )
                 if aws_access_key_id_input:
-                    secret_manager.set_secret("aws_access_key_id", aws_access_key_id_input)
+                    secrets_to_store.append({"name": "aws_access_key_id", "value": aws_access_key_id_input})
                     aws_access_key_id = "SEC/aws_access_key_id"
-                    cli.print_success("✓ AWS access key ID securely stored in secrets manager")
 
                 # Secret Access Key (sensitive - mask input)
                 aws_secret_access_key_input = Prompt.ask(
@@ -1417,9 +1426,8 @@ class AWSBedrockCLI(AbstractApp):
                     password=True
                 )
                 if aws_secret_access_key_input:
-                    secret_manager.set_secret("aws_secret_access_key", aws_secret_access_key_input)
+                    secrets_to_store.append({"name": "aws_secret_access_key", "value": aws_secret_access_key_input})
                     aws_secret_access_key = "SEC/aws_secret_access_key"
-                    cli.print_success("✓ AWS secret access key securely stored in secrets manager")
 
                 # Session Token (only for session auth)
                 if aws_auth_method == "session":
@@ -1430,9 +1438,8 @@ class AWSBedrockCLI(AbstractApp):
                         password=True
                     )
                     if aws_session_token_input:
-                        secret_manager.set_secret("aws_session_token", aws_session_token_input)
+                        secrets_to_store.append({"name": "aws_session_token", "value": aws_session_token_input})
                         aws_session_token = "SEC/aws_session_token"
-                        cli.print_success("✓ AWS session token securely stored in secrets manager")
 
             cli.console.print()
             enable_cost_tracking = Confirm.ask(
@@ -1475,11 +1482,10 @@ class AWSBedrockCLI(AbstractApp):
                 password=True
             )
 
-            # Store API key in secrets manager if provided
+            # Store API key in secrets.yaml if provided
             if anthropic_api_key_input:
-                secret_manager.set_secret("anthropic_api_key", anthropic_api_key_input)
+                secrets_to_store.append({"name": "anthropic_api_key", "value": anthropic_api_key_input})
                 anthropic_api_key = "SEC/anthropic_api_key"
-                cli.print_success("✓ Anthropic API key securely stored in secrets manager")
             else:
                 anthropic_api_key = ""
 
@@ -1538,23 +1544,21 @@ class AWSBedrockCLI(AbstractApp):
             cli.console.print("[dim]Leave username/password empty (null) to be prompted on startup (more secure)[/dim]")
             db_username_input = Prompt.ask("Database username (or press Enter for null)", default="")
 
-            # Store database username in secrets manager if provided
+            # Store database username in secrets.yaml if provided
             if db_username_input:
                 secret_key = f"db_{database_type}_username"
-                secret_manager.set_secret(secret_key, db_username_input)
+                secrets_to_store.append({"name": secret_key, "value": db_username_input})
                 db_username = f"SEC/{secret_key}"
-                cli.print_success(f"✓ Database username securely stored in secrets manager")
             else:
                 db_username = "null"
 
             db_password_input = Prompt.ask("Database password (or press Enter for null)", default="", password=True)
 
-            # Store database password in secrets manager if provided
+            # Store database password in secrets.yaml if provided
             if db_password_input:
                 secret_key = f"db_{database_type}_password"
-                secret_manager.set_secret(secret_key, db_password_input)
+                secrets_to_store.append({"name": secret_key, "value": db_password_input})
                 db_password = f"SEC/{secret_key}"
-                cli.print_success(f"✓ Database password securely stored in secrets manager")
             else:
                 db_password = "null"
 
@@ -2098,37 +2102,34 @@ class AWSBedrockCLI(AbstractApp):
                 f.write(config_content)
 
             cli.console.print()
-            cli.print_success(f"✓ Configuration file created successfully!")
+            cli.print_success("✓ Configuration file created successfully!")
             cli.console.print()
             cli.print_info(f"Location: {dest_config}")
             cli.console.print()
 
-            # Display summary of secrets stored
-            secrets_stored = []
-            if use_aws_bedrock and aws_auth_method in ["iam", "session"]:
-                if aws_access_key_id.startswith("SEC/"):
-                    secrets_stored.append("• AWS access key ID")
-                if aws_secret_access_key.startswith("SEC/"):
-                    secrets_stored.append("• AWS secret access key")
-                if aws_session_token.startswith("SEC/"):
-                    secrets_stored.append("• AWS session token")
-            if use_anthropic and anthropic_api_key.startswith("SEC/"):
-                secrets_stored.append("• Anthropic API key")
-            if database_type != "sqlite":
-                if db_username.startswith("SEC/"):
-                    secrets_stored.append(f"• {database_type.upper()} database username")
-                if db_password.startswith("SEC/"):
-                    secrets_stored.append(f"• {database_type.upper()} database password")
+            # Write secrets.yaml if there are secrets to store
+            if secrets_to_store:
+                import yaml
+                secrets_yaml_content = {"secrets": secrets_to_store}
 
-            if secrets_stored:
+                # Ensure secrets directory exists
+                os.makedirs(secrets_dir, exist_ok=True)
+
+                with open(secrets_file, 'w', encoding='utf-8') as f:
+                    yaml.dump(secrets_yaml_content, f, default_flow_style=False, sort_keys=False)
+
                 cli.console.print()
                 cli.print_separator("─")
-                cli.console.print("[bold green]Secrets Securely Stored:[/bold green]")
-                for secret in secrets_stored:
-                    cli.console.print(f"  {secret}")
+                cli.console.print("[bold green]Secrets Written to secrets.yaml:[/bold green]")
+                for secret in secrets_to_store:
+                    cli.console.print(f"  • {secret['name']}")
                 cli.console.print()
-                cli.console.print("[dim]These credentials are stored in the secrets manager and[/dim]")
-                cli.console.print("[dim]referenced in config.yaml as SEC/<key_name> for security.[/dim]")
+                cli.print_info(f"Location: {secrets_file}")
+                cli.console.print()
+                cli.console.print("[dim]On next application startup, secrets will be automatically[/dim]")
+                cli.console.print("[dim]ingested into the secrets manager and secrets.yaml will be deleted.[/dim]")
+                cli.console.print()
+                cli.console.print("[dim]Secrets are referenced in config.yaml as SEC/<key_name>.[/dim]")
                 cli.print_separator("─")
                 cli.console.print()
 
