@@ -1327,8 +1327,14 @@ class AWSBedrockCLI(AbstractApp):
         # ═══════════════════════════════════════════════════════════════
         # AWS Bedrock Configuration
         # ═══════════════════════════════════════════════════════════════
+        aws_auth_method = "sso"
         aws_profile = "default"
         aws_region = "us-east-1"
+        aws_account_name = ""
+        aws_account_id = ""
+        aws_access_key_id = ""
+        aws_secret_access_key = ""
+        aws_session_token = ""
         enable_cost_tracking = False
 
         if use_aws_bedrock:
@@ -1338,16 +1344,97 @@ class AWSBedrockCLI(AbstractApp):
             cli.print_separator("═")
             cli.console.print()
 
-            aws_profile = Prompt.ask(
-                "AWS SSO profile name",
-                default="default"
-            )
+            # Authentication method selection
+            cli.console.print("[bold]Authentication Method[/bold]")
+            cli.console.print()
+            cli.console.print("  [1] SSO Profile - AWS Single Sign-On (recommended for interactive use)")
+            cli.console.print("  [2] IAM Access Keys - Long-lived credentials (recommended for autonomous actions)")
+            cli.console.print("  [3] Session Credentials - Temporary credentials with session token")
+            cli.console.print()
+            cli.console.print("[dim]Note: SSO and session credentials have timeouts which may interrupt[/dim]")
+            cli.console.print("[dim]autonomous actions running on a schedule. IAM access keys are recommended[/dim]")
+            cli.console.print("[dim]for unattended/scheduled operations as they do not expire.[/dim]")
+            cli.console.print()
 
+            auth_method_choices = {
+                "1": "sso",
+                "2": "iam",
+                "3": "session"
+            }
+            auth_method_choice = Prompt.ask(
+                "Select authentication method",
+                choices=["1", "2", "3"],
+                default="1"
+            )
+            aws_auth_method = auth_method_choices[auth_method_choice]
+
+            cli.console.print()
+
+            # Region (common to all methods)
             aws_region = Prompt.ask(
                 "AWS region",
                 default="us-east-1"
             )
 
+            # SSO Profile authentication
+            if aws_auth_method == "sso":
+                cli.console.print()
+                aws_profile = Prompt.ask(
+                    "AWS SSO profile name",
+                    default="default"
+                )
+
+            # IAM or Session authentication
+            if aws_auth_method in ["iam", "session"]:
+                cli.console.print()
+                cli.console.print("[dim]AWS Account Information (optional, for reference):[/dim]")
+                aws_account_name = Prompt.ask(
+                    "AWS account name (friendly name)",
+                    default=""
+                )
+                aws_account_id = Prompt.ask(
+                    "AWS account ID (12-digit number)",
+                    default=""
+                )
+
+                cli.console.print()
+                cli.console.print("[dim]AWS Credentials (stored securely in secrets manager):[/dim]")
+
+                # Access Key ID (not typically considered secret, but mask anyway for consistency)
+                aws_access_key_id_input = Prompt.ask(
+                    "AWS access key ID",
+                    default=""
+                )
+                if aws_access_key_id_input:
+                    secret_manager.set_secret("aws_access_key_id", aws_access_key_id_input)
+                    aws_access_key_id = "SEC/aws_access_key_id"
+                    cli.print_success("✓ AWS access key ID securely stored in secrets manager")
+
+                # Secret Access Key (sensitive - mask input)
+                aws_secret_access_key_input = Prompt.ask(
+                    "AWS secret access key",
+                    default="",
+                    password=True
+                )
+                if aws_secret_access_key_input:
+                    secret_manager.set_secret("aws_secret_access_key", aws_secret_access_key_input)
+                    aws_secret_access_key = "SEC/aws_secret_access_key"
+                    cli.print_success("✓ AWS secret access key securely stored in secrets manager")
+
+                # Session Token (only for session auth)
+                if aws_auth_method == "session":
+                    cli.console.print()
+                    aws_session_token_input = Prompt.ask(
+                        "AWS session token",
+                        default="",
+                        password=True
+                    )
+                    if aws_session_token_input:
+                        secret_manager.set_secret("aws_session_token", aws_session_token_input)
+                        aws_session_token = "SEC/aws_session_token"
+                        cli.print_success("✓ AWS session token securely stored in secrets manager")
+
+            cli.console.print()
             enable_cost_tracking = Confirm.ask(
                 "Enable AWS cost tracking?",
                 default=False
@@ -1812,21 +1899,66 @@ class AWSBedrockCLI(AbstractApp):
             )
 
             # AWS settings
-            config_content = re.sub(
-                r'(sso_profile:\s+)[^\s#]+',
-                f'\\g<1>{aws_profile}',
-                config_content
-            )
-            config_content = re.sub(
-                r'(region:\s+)[^\s#]+',
-                f'\\g<1>{aws_region}',
-                config_content
-            )
-            config_content = re.sub(
-                r'(cost_tracking:\s*\n\s+enabled:\s+)(true|false)',
-                f'\\g<1>{str(enable_cost_tracking).lower()}',
-                config_content
-            )
+            if use_aws_bedrock:
+                # Auth method
+                config_content = re.sub(
+                    r'(auth_method:\s+)[^\s#]+',
+                    f'\\g<1>{aws_auth_method}',
+                    config_content
+                )
+                # Region
+                config_content = re.sub(
+                    r'(aws_bedrock:\s*\n(?:.*\n)*?\s+region:\s+)[^\s#]+',
+                    f'\\g<1>{aws_region}',
+                    config_content
+                )
+                # Account name (only if provided)
+                if aws_account_name:
+                    config_content = re.sub(
+                        r'(account_name:\s+)[^\s#]+',
+                        f'\\g<1>{aws_account_name}',
+                        config_content
+                    )
+                # Account ID (only if provided)
+                if aws_account_id:
+                    config_content = re.sub(
+                        r'(account_id:\s+)[^\s#]+',
+                        f'\\g<1>{aws_account_id}',
+                        config_content
+                    )
+                # SSO profile
+                config_content = re.sub(
+                    r'(sso_profile:\s+)[^\s#]+',
+                    f'\\g<1>{aws_profile}',
+                    config_content
+                )
+                # Access key ID (only if provided)
+                if aws_access_key_id:
+                    config_content = re.sub(
+                        r'(access_key_id:\s+)[^\s#]+',
+                        f'\\g<1>{aws_access_key_id}',
+                        config_content
+                    )
+                # Secret access key (only if provided)
+                if aws_secret_access_key:
+                    config_content = re.sub(
+                        r'(secret_access_key:\s+)[^\s#]+',
+                        f'\\g<1>{aws_secret_access_key}',
+                        config_content
+                    )
+                # Session token (only if provided)
+                if aws_session_token:
+                    config_content = re.sub(
+                        r'(session_token:\s+)[^\s#]+',
+                        f'\\g<1>{aws_session_token}',
+                        config_content
+                    )
+                # Cost tracking
+                config_content = re.sub(
+                    r'(cost_tracking:\s*\n\s+enabled:\s+)(true|false)',
+                    f'\\g<1>{str(enable_cost_tracking).lower()}',
+                    config_content
+                )
 
             # Ollama settings
             if use_ollama:
@@ -1973,6 +2105,13 @@ class AWSBedrockCLI(AbstractApp):
 
             # Display summary of secrets stored
             secrets_stored = []
+            if use_aws_bedrock and aws_auth_method in ["iam", "session"]:
+                if aws_access_key_id.startswith("SEC/"):
+                    secrets_stored.append("• AWS access key ID")
+                if aws_secret_access_key.startswith("SEC/"):
+                    secrets_stored.append("• AWS secret access key")
+                if aws_session_token.startswith("SEC/"):
+                    secrets_stored.append("• AWS session token")
             if use_anthropic and anthropic_api_key.startswith("SEC/"):
                 secrets_stored.append("• Anthropic API key")
             if database_type != "sqlite":

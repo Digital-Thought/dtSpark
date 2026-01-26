@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.8]
+
+### Added
+- Setup wizard now supports AWS Bedrock authentication method selection:
+  - SSO Profile (recommended for interactive use)
+  - IAM Access Keys (recommended for autonomous actions - no timeout)
+  - Session Credentials (temporary credentials with token)
+- AWS account name and account ID fields for reference/logging
+- Advisement in wizard about SSO/session timeouts affecting autonomous actions
+- AWS credentials securely stored in secrets manager with SEC/ references
+
+---
+
 ## [1.0.7]
 
 ### Fixed
@@ -201,6 +214,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.0.8 | AWS Bedrock IAM/session authentication in setup wizard |
 | 1.0.7 | Fix Anthropic API key not written to config |
 | 1.0.6 | Secure secret input masking in setup wizard |
 | 1.0.5 | Use default config locations instead of forced container mode |

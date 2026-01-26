@@ -83,20 +83,29 @@ llm_providers:
     enabled: true  # Set to false to disable AWS Bedrock
     region: us-east-1  # AWS region for Bedrock API
 
-    # Authentication method: Choose one of the following:
-    #
-    # 1. SSO Profile (recommended for interactive use)
+    # Authentication method: sso, iam, or session
+    # - sso: AWS SSO profile (recommended for interactive use, has session timeout)
+    # - iam: IAM access keys (recommended for autonomous actions, no timeout)
+    # - session: Temporary session credentials (has session timeout)
+    auth_method: sso  # Authentication method to use
+
+    # AWS Account Information (optional, for reference/logging)
+    account_name: null  # Friendly name for the AWS account
+    account_id: null  # AWS account ID (12-digit number)
+
+    # SSO Profile Authentication (used when auth_method: sso)
     sso_profile: default  # AWS SSO profile name
-    #
-    # 2. API Keys (for programmatic access, CI/CD, or when SSO is not available)
-    # Uncomment and set these to use API keys instead of SSO:
-    # access_key_id: YOUR_ACCESS_KEY_ID
-    # secret_access_key: YOUR_SECRET_ACCESS_KEY
-    # session_token: YOUR_SESSION_TOKEN  # Optional: for temporary credentials
-    #
-    # Note: API keys take precedence over SSO profile if both are configured
-    #
+
+    # API Key Authentication (used when auth_method: iam or session)
+    # For IAM: Set access_key_id and secret_access_key
+    # For Session: Also set session_token
+    # Note: Use SEC/<key_name> to reference secrets stored in secrets manager
+    access_key_id: null  # AWS access key ID
+    secret_access_key: null  # AWS secret access key (use SEC/aws_secret_access_key)
+    session_token: null  # Session token for temporary credentials (use SEC/aws_session_token)
+
     # Security Warning: Do NOT commit API keys to version control!
+    # Use the setup wizard (--setup) to securely store credentials in secrets manager
 
     cost_tracking:
       enabled: false  # Set to true to enable AWS Bedrock cost gathering and display
