@@ -494,6 +494,81 @@ async def get_mcp_tools(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class EmbeddedToolInfo(BaseModel):
+    """Embedded tool information."""
+    name: str
+    description: str
+    category: str  # Core, Filesystem, Documents, Archives
+
+
+@router.get("/embedded-tools")
+async def get_embedded_tools(
+    request: Request,
+    session_id: str = Depends(get_current_session),
+) -> list[EmbeddedToolInfo]:
+    """
+    Get all embedded tools with their categories.
+
+    Returns:
+        List of EmbeddedToolInfo with tool details and categories
+    """
+    try:
+        app_instance = request.app.state.app_instance
+        tools = []
+
+        # Get embedded tools from conversation manager
+        if hasattr(app_instance, 'conversation_manager') and app_instance.conversation_manager:
+            try:
+                embedded = app_instance.conversation_manager.get_embedded_tools()
+                for tool in embedded:
+                    # Handle both Bedrock format (toolSpec) and Claude format (direct)
+                    if 'toolSpec' in tool:
+                        tool_spec = tool.get('toolSpec', {})
+                        name = tool_spec.get('name', 'unknown')
+                        description = tool_spec.get('description', '')
+                    else:
+                        name = tool.get('name', 'unknown')
+                        description = tool.get('description', '')
+
+                    # Determine category based on tool name
+                    category = _categorise_embedded_tool(name)
+
+                    tools.append(EmbeddedToolInfo(
+                        name=name,
+                        description=description,
+                        category=category,
+                    ))
+            except Exception as e:
+                logger.warning(f"Error getting embedded tools: {e}")
+
+        return tools
+
+    except Exception as e:
+        logger.error(f"Error getting embedded tools: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+def _categorise_embedded_tool(tool_name: str) -> str:
+    """Categorise an embedded tool based on its name."""
+    name_lower = tool_name.lower()
+
+    # Document tools
+    if any(kw in name_lower for kw in ['word', 'excel', 'powerpoint', 'pdf', 'document']):
+        return 'Documents'
+
+    # Archive tools
+    if any(kw in name_lower for kw in ['archive', 'zip', 'tar', 'extract']):
+        return 'Archives'
+
+    # Filesystem tools
+    if any(kw in name_lower for kw in ['file', 'directory', 'list_files', 'read_file',
+                                        'write_file', 'create_directory', 'search_files']):
+        return 'Filesystem'
+
+    # Default to Core
+    return 'Core'
+
+
 @router.get("/daemon/status")
 async def get_daemon_status(request: Request):
     """

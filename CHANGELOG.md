@@ -18,6 +18,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.11]
+
+### Added
+
+#### MS Office Document Tools
+- Read Word documents (.docx) - extract text, paragraphs, and tables
+- Read Excel spreadsheets (.xlsx) - extract sheets and data with configurable row limits
+- Read PowerPoint presentations (.pptx) - extract slides, text, and speaker notes
+- Read PDF documents (.pdf) - extract text by page with configurable page limits
+- Create Word documents from content or templates with placeholder substitution
+- Create Excel spreadsheets from structured data or templates
+- Create PowerPoint presentations from slides or templates
+- File metadata tool (get_file_info) - get MIME type, size, and extension
+- Template support with `{{placeholder}}` syntax for document creation
+
+#### Archive Tools
+- List archive contents (.zip, .tar, .tar.gz, .tgz)
+- Read specific files from archives without extraction
+- Extract archives to disk (when access_mode is read_write)
+
+#### Tool Selector Categories
+- Added 'documents' category for MS Office and PDF related queries
+- Added 'archives' category for archive-related queries
+
+### Changed
+- Setup wizard now prompts for document and archive tool configuration
+- Web UI Integrations tab now dynamically loads embedded tools from API
+
+### Fixed
+- Web UI Integrations tab was showing hardcoded embedded tools instead of actual enabled tools
+- Added `/api/embedded-tools` endpoint for dynamic tool discovery
+
+---
+
 ## [1.0.10]
 
 ### Fixed
@@ -233,6 +267,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.0.11 | MS Office document tools, archive tools, Web UI embedded tools fix |
 | 1.0.10 | Fix config.yaml created in wrong directory |
 | 1.0.9 | Secrets written to secrets.yaml, CONTAINER_MODE config path support |
 | 1.0.8 | AWS Bedrock IAM/session authentication in setup wizard |

@@ -21,6 +21,8 @@ class ToolSelector:
         'aws_infrastructure': ['ec2', 's3', 'lambda', 'cloudwatch', 'iam', 'vpc', 'rds', 'dynamodb', 'diagram'],
         'elasticsearch': ['elasticsearch', 'search', 'index', 'query', 'aggregation'],
         'ragstore': ['ragstore', 'rag', 'embedding', 'vector', 'semantic'],
+        'documents': ['word', 'excel', 'powerpoint', 'pdf', 'document', 'docx', 'xlsx', 'pptx', 'spreadsheet'],
+        'archives': ['archive', 'zip', 'tar', 'extract', 'compress', 'tgz'],
     }
 
     # Keywords in user messages that trigger specific categories
@@ -36,6 +38,9 @@ class ToolSelector:
                               'vpc', 'subnet', 'instance', 'bucket', 'function', 'diagram'],
         'elasticsearch': ['elasticsearch', 'search', 'query', 'index', 'log', 'aggregate'],
         'ragstore': ['ragstore', 'rag', 'embedding', 'semantic', 'vector', 'similarity'],
+        'documents': ['document', 'word', 'excel', 'powerpoint', 'pdf', 'docx', 'xlsx', 'pptx',
+                     'spreadsheet', 'presentation', 'template', 'office'],
+        'archives': ['archive', 'zip', 'tar', 'extract', 'unzip', 'compressed', 'tgz'],
     }
 
     def __init__(self, max_tools_per_request: int = 30):

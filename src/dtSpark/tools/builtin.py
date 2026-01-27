@@ -63,6 +63,20 @@ def get_builtin_tools(config: Optional[Dict[str, Any]] = None) -> List[Dict[str,
             tools.extend(fs_tools)
             logging.info(f"Embedded filesystem tools enabled: {len(fs_tools)} tools added")
 
+        # Add document tools if enabled
+        doc_config = config.get('embedded_tools', {}).get('documents', {})
+        if doc_config.get('enabled', False):
+            doc_tools = _get_document_tools(doc_config)
+            tools.extend(doc_tools)
+            logging.info(f"Embedded document tools enabled: {len(doc_tools)} tools added")
+
+        # Add archive tools if enabled
+        archive_config = config.get('embedded_tools', {}).get('archives', {})
+        if archive_config.get('enabled', False):
+            archive_tools = _get_archive_tools(archive_config)
+            tools.extend(archive_tools)
+            logging.info(f"Embedded archive tools enabled: {len(archive_tools)} tools added")
+
     return tools
 
 
@@ -99,6 +113,33 @@ def execute_builtin_tool(tool_name: str, tool_input: Dict[str, Any],
             return _execute_write_file(tool_input, config)
         elif tool_name == "create_directories":
             return _execute_create_directories(tool_input, config)
+
+        # Document tools
+        elif tool_name == "get_file_info":
+            return _execute_get_file_info(tool_input, config)
+        elif tool_name == "read_word_document":
+            return _execute_read_word_document(tool_input, config)
+        elif tool_name == "read_excel_document":
+            return _execute_read_excel_document(tool_input, config)
+        elif tool_name == "read_powerpoint_document":
+            return _execute_read_powerpoint_document(tool_input, config)
+        elif tool_name == "read_pdf_document":
+            return _execute_read_pdf_document(tool_input, config)
+        elif tool_name == "create_word_document":
+            return _execute_create_word_document(tool_input, config)
+        elif tool_name == "create_excel_document":
+            return _execute_create_excel_document(tool_input, config)
+        elif tool_name == "create_powerpoint_document":
+            return _execute_create_powerpoint_document(tool_input, config)
+
+        # Archive tools
+        elif tool_name == "list_archive_contents":
+            return _execute_list_archive_contents(tool_input, config)
+        elif tool_name == "read_archive_file":
+            return _execute_read_archive_file(tool_input, config)
+        elif tool_name == "extract_archive":
+            return _execute_extract_archive(tool_input, config)
+
         else:
             return {
                 "success": False,
@@ -830,4 +871,1401 @@ def _execute_create_directories(tool_input: Dict[str, Any],
 
     except Exception as e:
         logging.error(f"Error creating directories {dir_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================================
+# Document Tools
+# ============================================================================
+
+def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Get document tool definitions based on configuration.
+
+    Args:
+        doc_config: Document tools configuration dictionary
+
+    Returns:
+        List of document tool definitions
+    """
+    access_mode = doc_config.get('access_mode', 'read')
+    allowed_path = doc_config.get('allowed_path', '.')
+
+    # File info tool (always included)
+    tools = [
+        {
+            "name": "get_file_info",
+            "description": f"Get detailed file information including type, size, MIME type, and extension. "
+                          f"Works for any file within the allowed path ({allowed_path}). "
+                          "Useful for determining how to process a file before reading it.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the file (relative to allowed path or absolute within allowed path)"
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    ]
+
+    # Read-only document tools
+    tools.extend([
+        {
+            "name": "read_word_document",
+            "description": f"Extract text content from Microsoft Word documents (.docx) within the allowed path ({allowed_path}). "
+                          "Returns the document text organised by paragraphs. Also extracts headings and tables if present.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the .docx file"
+                    },
+                    "include_tables": {
+                        "type": "boolean",
+                        "description": "Include table content in the output",
+                        "default": True
+                    },
+                    "include_headers_footers": {
+                        "type": "boolean",
+                        "description": "Include header and footer content",
+                        "default": False
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "read_excel_document",
+            "description": f"Extract data from Microsoft Excel documents (.xlsx) within the allowed path ({allowed_path}). "
+                          "Returns spreadsheet data as structured JSON. Can read specific sheets or all sheets.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the .xlsx file"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "description": "Specific sheet name to read. If not provided, reads the active sheet."
+                    },
+                    "include_all_sheets": {
+                        "type": "boolean",
+                        "description": "Read all sheets in the workbook",
+                        "default": False
+                    },
+                    "max_rows": {
+                        "type": "integer",
+                        "description": "Maximum number of rows to read (0 = use config default)",
+                        "default": 0
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "read_powerpoint_document",
+            "description": f"Extract text content from Microsoft PowerPoint documents (.pptx) within the allowed path ({allowed_path}). "
+                          "Returns text organised by slide, including titles, body text, and notes.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the .pptx file"
+                    },
+                    "include_notes": {
+                        "type": "boolean",
+                        "description": "Include speaker notes in the output",
+                        "default": True
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "read_pdf_document",
+            "description": f"Extract text content from PDF documents within the allowed path ({allowed_path}). "
+                          "Returns text organised by page. Can extract metadata and specific pages.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the .pdf file"
+                    },
+                    "page_numbers": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Specific page numbers to extract (1-indexed). If not provided, extracts all pages."
+                    },
+                    "include_metadata": {
+                        "type": "boolean",
+                        "description": "Include document metadata (author, title, etc.)",
+                        "default": True
+                    }
+                },
+                "required": ["path"]
+            }
+        }
+    ])
+
+    # Write/create tools (only if access_mode is read_write)
+    if access_mode == 'read_write':
+        tools.extend([
+            {
+                "name": "create_word_document",
+                "description": f"Create a Microsoft Word document (.docx) within the allowed path ({allowed_path}). "
+                              "Supports creating from scratch with structured content, or using a template with placeholder replacement. "
+                              "When using a template, placeholders in the format {{{{placeholder_name}}}} will be replaced with provided values.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path for the output .docx file"
+                        },
+                        "content": {
+                            "type": "object",
+                            "description": "Document content structure",
+                            "properties": {
+                                "title": {"type": "string", "description": "Document title"},
+                                "paragraphs": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "text": {"type": "string"},
+                                            "style": {"type": "string", "description": "Style: Normal, Heading 1, Heading 2, Heading 3, Title"}
+                                        }
+                                    },
+                                    "description": "List of paragraphs with optional styles"
+                                }
+                            }
+                        },
+                        "template_path": {
+                            "type": "string",
+                            "description": "Path to a .docx template file. If provided, placeholders will be replaced."
+                        },
+                        "placeholders": {
+                            "type": "object",
+                            "description": "Dictionary of placeholder names to values for template replacement",
+                            "additionalProperties": {"type": "string"}
+                        }
+                    },
+                    "required": ["path"]
+                }
+            },
+            {
+                "name": "create_excel_document",
+                "description": f"Create a Microsoft Excel document (.xlsx) within the allowed path ({allowed_path}). "
+                              "Creates spreadsheets from structured data. Supports multiple sheets.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path for the output .xlsx file"
+                        },
+                        "sheets": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string", "description": "Sheet name"},
+                                    "headers": {"type": "array", "items": {"type": "string"}, "description": "Column headers"},
+                                    "data": {
+                                        "type": "array",
+                                        "items": {"type": "array"},
+                                        "description": "2D array of cell values (rows of columns)"
+                                    }
+                                },
+                                "required": ["name", "data"]
+                            },
+                            "description": "List of sheets to create"
+                        }
+                    },
+                    "required": ["path", "sheets"]
+                }
+            },
+            {
+                "name": "create_powerpoint_document",
+                "description": f"Create a Microsoft PowerPoint document (.pptx) within the allowed path ({allowed_path}). "
+                              "Creates presentations with title and content slides. Supports templates with placeholder replacement.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path for the output .pptx file"
+                        },
+                        "slides": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "layout": {
+                                        "type": "string",
+                                        "description": "Slide layout: title, title_content, content, blank"
+                                    },
+                                    "title": {"type": "string", "description": "Slide title"},
+                                    "content": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "Bullet points or paragraphs"
+                                    },
+                                    "notes": {"type": "string", "description": "Speaker notes"}
+                                }
+                            },
+                            "description": "List of slides to create"
+                        },
+                        "template_path": {
+                            "type": "string",
+                            "description": "Path to a .pptx template file"
+                        },
+                        "placeholders": {
+                            "type": "object",
+                            "description": "Dictionary of placeholder names to values for template replacement",
+                            "additionalProperties": {"type": "string"}
+                        }
+                    },
+                    "required": ["path", "slides"]
+                }
+            }
+        ])
+
+    return tools
+
+
+def _execute_get_file_info(tool_input: Dict[str, Any],
+                           config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the get_file_info tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+    file_path = tool_input.get('path')
+
+    if not file_path:
+        return {"success": False, "error": "File path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.exists():
+        return {"success": False, "error": f"File does not exist: {file_path}"}
+
+    if not full_path.is_file():
+        return {"success": False, "error": f"Path is not a file: {file_path}"}
+
+    try:
+        import mimetypes
+        stat_info = full_path.stat()
+
+        # Try to get MIME type
+        mime_type, _ = mimetypes.guess_type(str(full_path))
+
+        # Try python-magic for more accurate detection
+        try:
+            import magic
+            mime_type_magic = magic.from_file(str(full_path), mime=True)
+            if mime_type_magic:
+                mime_type = mime_type_magic
+        except ImportError:
+            pass
+        except Exception:
+            pass
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "filename": full_path.name,
+            "extension": full_path.suffix.lower(),
+            "mime_type": mime_type or "application/octet-stream",
+            "size_bytes": stat_info.st_size,
+            "size_human": _format_size(stat_info.st_size),
+            "modified": datetime.fromtimestamp(stat_info.st_mtime).isoformat(),
+            "created": datetime.fromtimestamp(stat_info.st_ctime).isoformat()
+        }
+
+        logging.info(f"Got file info: {file_path}")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error getting file info {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _format_size(size_bytes: int) -> str:
+    """Format file size in human-readable format."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size_bytes < 1024.0:
+            return f"{size_bytes:.2f} {unit}"
+        size_bytes /= 1024.0
+    return f"{size_bytes:.2f} PB"
+
+
+def _execute_read_word_document(tool_input: Dict[str, Any],
+                                config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the read_word_document tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+    max_size_mb = doc_config.get('max_file_size_mb', 50)
+
+    file_path = tool_input.get('path')
+    include_tables = tool_input.get('include_tables', True)
+    include_headers_footers = tool_input.get('include_headers_footers', False)
+
+    if not file_path:
+        return {"success": False, "error": "File path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.exists():
+        return {"success": False, "error": f"File does not exist: {file_path}"}
+
+    if full_path.suffix.lower() != '.docx':
+        return {"success": False, "error": f"File is not a Word document (.docx): {file_path}"}
+
+    if full_path.stat().st_size > max_size_mb * 1024 * 1024:
+        return {"success": False, "error": f"File exceeds maximum size of {max_size_mb} MB"}
+
+    try:
+        from docx import Document
+        doc = Document(str(full_path))
+
+        paragraphs = []
+        for para in doc.paragraphs:
+            if para.text.strip():
+                paragraphs.append({
+                    "text": para.text,
+                    "style": para.style.name if para.style else "Normal"
+                })
+
+        tables = []
+        if include_tables:
+            for table in doc.tables:
+                table_data = []
+                for row in table.rows:
+                    row_data = [cell.text for cell in row.cells]
+                    table_data.append(row_data)
+                if table_data:
+                    tables.append(table_data)
+
+        headers_footers = []
+        if include_headers_footers:
+            for section in doc.sections:
+                if section.header and section.header.paragraphs:
+                    for para in section.header.paragraphs:
+                        if para.text.strip():
+                            headers_footers.append({"type": "header", "text": para.text})
+                if section.footer and section.footer.paragraphs:
+                    for para in section.footer.paragraphs:
+                        if para.text.strip():
+                            headers_footers.append({"type": "footer", "text": para.text})
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "paragraph_count": len(paragraphs),
+            "paragraphs": paragraphs,
+            "table_count": len(tables),
+            "tables": tables if tables else None,
+            "headers_footers": headers_footers if headers_footers else None
+        }
+
+        logging.info(f"Read Word document: {file_path} ({len(paragraphs)} paragraphs, {len(tables)} tables)")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error reading Word document {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_read_excel_document(tool_input: Dict[str, Any],
+                                 config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the read_excel_document tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+    max_size_mb = doc_config.get('max_file_size_mb', 50)
+    default_max_rows = doc_config.get('reading', {}).get('max_excel_rows', 10000)
+
+    file_path = tool_input.get('path')
+    sheet_name = tool_input.get('sheet_name')
+    include_all_sheets = tool_input.get('include_all_sheets', False)
+    max_rows = tool_input.get('max_rows', 0) or default_max_rows
+
+    if not file_path:
+        return {"success": False, "error": "File path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.exists():
+        return {"success": False, "error": f"File does not exist: {file_path}"}
+
+    if full_path.suffix.lower() != '.xlsx':
+        return {"success": False, "error": f"File is not an Excel document (.xlsx): {file_path}"}
+
+    if full_path.stat().st_size > max_size_mb * 1024 * 1024:
+        return {"success": False, "error": f"File exceeds maximum size of {max_size_mb} MB"}
+
+    try:
+        from openpyxl import load_workbook
+        wb = load_workbook(str(full_path), read_only=True, data_only=True)
+
+        sheets_data = {}
+        sheet_names = wb.sheetnames
+
+        if include_all_sheets:
+            sheets_to_read = sheet_names
+        elif sheet_name:
+            if sheet_name not in sheet_names:
+                return {"success": False, "error": f"Sheet '{sheet_name}' not found. Available: {sheet_names}"}
+            sheets_to_read = [sheet_name]
+        else:
+            sheets_to_read = [wb.active.title] if wb.active else sheet_names[:1]
+
+        for sname in sheets_to_read:
+            ws = wb[sname]
+            rows = []
+            row_count = 0
+            for row in ws.iter_rows(values_only=True):
+                if row_count >= max_rows:
+                    break
+                rows.append(list(row))
+                row_count += 1
+
+            sheets_data[sname] = {
+                "rows": rows,
+                "row_count": len(rows),
+                "truncated": row_count >= max_rows
+            }
+
+        wb.close()
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "sheet_names": sheet_names,
+            "sheets_read": list(sheets_data.keys()),
+            "data": sheets_data,
+            "max_rows_limit": max_rows
+        }
+
+        logging.info(f"Read Excel document: {file_path} ({len(sheets_data)} sheets)")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error reading Excel document {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_read_powerpoint_document(tool_input: Dict[str, Any],
+                                      config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the read_powerpoint_document tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+    max_size_mb = doc_config.get('max_file_size_mb', 50)
+
+    file_path = tool_input.get('path')
+    include_notes = tool_input.get('include_notes', True)
+
+    if not file_path:
+        return {"success": False, "error": "File path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.exists():
+        return {"success": False, "error": f"File does not exist: {file_path}"}
+
+    if full_path.suffix.lower() != '.pptx':
+        return {"success": False, "error": f"File is not a PowerPoint document (.pptx): {file_path}"}
+
+    if full_path.stat().st_size > max_size_mb * 1024 * 1024:
+        return {"success": False, "error": f"File exceeds maximum size of {max_size_mb} MB"}
+
+    try:
+        from pptx import Presentation
+        prs = Presentation(str(full_path))
+
+        slides = []
+        for idx, slide in enumerate(prs.slides, 1):
+            slide_data = {
+                "slide_number": idx,
+                "title": None,
+                "content": []
+            }
+
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    for para in shape.text_frame.paragraphs:
+                        text = para.text.strip()
+                        if text:
+                            if shape.is_placeholder and hasattr(shape, 'placeholder_format'):
+                                if shape.placeholder_format.type == 1:  # Title
+                                    slide_data["title"] = text
+                                else:
+                                    slide_data["content"].append(text)
+                            else:
+                                slide_data["content"].append(text)
+
+            if include_notes and slide.has_notes_slide:
+                notes_frame = slide.notes_slide.notes_text_frame
+                if notes_frame:
+                    notes_text = notes_frame.text.strip()
+                    if notes_text:
+                        slide_data["notes"] = notes_text
+
+            slides.append(slide_data)
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "slide_count": len(slides),
+            "slides": slides
+        }
+
+        logging.info(f"Read PowerPoint document: {file_path} ({len(slides)} slides)")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error reading PowerPoint document {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_read_pdf_document(tool_input: Dict[str, Any],
+                               config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the read_pdf_document tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+    max_size_mb = doc_config.get('max_file_size_mb', 50)
+    max_pages = doc_config.get('reading', {}).get('max_pdf_pages', 100)
+
+    file_path = tool_input.get('path')
+    page_numbers = tool_input.get('page_numbers')
+    include_metadata = tool_input.get('include_metadata', True)
+
+    if not file_path:
+        return {"success": False, "error": "File path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.exists():
+        return {"success": False, "error": f"File does not exist: {file_path}"}
+
+    if full_path.suffix.lower() != '.pdf':
+        return {"success": False, "error": f"File is not a PDF document (.pdf): {file_path}"}
+
+    if full_path.stat().st_size > max_size_mb * 1024 * 1024:
+        return {"success": False, "error": f"File exceeds maximum size of {max_size_mb} MB"}
+
+    try:
+        import pdfplumber
+
+        pages_data = []
+        metadata = None
+
+        with pdfplumber.open(str(full_path)) as pdf:
+            total_pages = len(pdf.pages)
+
+            if include_metadata:
+                metadata = pdf.metadata
+
+            # Determine which pages to extract
+            if page_numbers:
+                pages_to_read = [p - 1 for p in page_numbers if 0 < p <= total_pages]
+            else:
+                pages_to_read = list(range(min(total_pages, max_pages)))
+
+            for page_idx in pages_to_read:
+                page = pdf.pages[page_idx]
+                text = page.extract_text() or ""
+                pages_data.append({
+                    "page_number": page_idx + 1,
+                    "text": text,
+                    "width": page.width,
+                    "height": page.height
+                })
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "total_pages": total_pages,
+            "pages_extracted": len(pages_data),
+            "pages": pages_data,
+            "truncated": len(pages_data) < total_pages and not page_numbers,
+            "metadata": metadata
+        }
+
+        logging.info(f"Read PDF document: {file_path} ({len(pages_data)} pages)")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error reading PDF document {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_create_word_document(tool_input: Dict[str, Any],
+                                  config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the create_word_document tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    if doc_config.get('access_mode', 'read') != 'read_write':
+        return {"success": False, "error": "Write operations require access_mode: read_write"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+    templates_path = doc_config.get('creation', {}).get('templates_path')
+
+    file_path = tool_input.get('path')
+    content = tool_input.get('content', {})
+    template_path = tool_input.get('template_path')
+    placeholders = tool_input.get('placeholders', {})
+
+    if not file_path:
+        return {"success": False, "error": "Output file path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.parent.exists():
+        return {"success": False, "error": f"Parent directory does not exist: {full_path.parent}"}
+
+    try:
+        from docx import Document
+
+        # Use template if provided
+        if template_path:
+            # Validate template path
+            if templates_path:
+                template_full = Path(templates_path) / template_path
+            else:
+                template_validation = _validate_path(template_path, allowed_path)
+                if not template_validation['valid']:
+                    return {"success": False, "error": f"Template path error: {template_validation['error']}"}
+                template_full = Path(template_validation['resolved_path'])
+
+            if not template_full.exists():
+                return {"success": False, "error": f"Template does not exist: {template_path}"}
+
+            doc = Document(str(template_full))
+
+            # Replace placeholders in paragraphs
+            for para in doc.paragraphs:
+                for key, value in placeholders.items():
+                    if f"{{{{{key}}}}}" in para.text:
+                        for run in para.runs:
+                            run.text = run.text.replace(f"{{{{{key}}}}}", str(value))
+
+            # Replace placeholders in tables
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for key, value in placeholders.items():
+                            if f"{{{{{key}}}}}" in cell.text:
+                                cell.text = cell.text.replace(f"{{{{{key}}}}}", str(value))
+
+        else:
+            doc = Document()
+
+            # Add title if provided
+            if content.get('title'):
+                doc.add_heading(content['title'], 0)
+
+            # Add paragraphs
+            for para_data in content.get('paragraphs', []):
+                text = para_data.get('text', '')
+                style = para_data.get('style', 'Normal')
+                if style.startswith('Heading'):
+                    level = int(style.split()[-1]) if style.split()[-1].isdigit() else 1
+                    doc.add_heading(text, level)
+                else:
+                    doc.add_paragraph(text, style=style)
+
+        doc.save(str(full_path))
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "size_bytes": full_path.stat().st_size,
+            "used_template": template_path is not None,
+            "placeholders_replaced": list(placeholders.keys()) if placeholders else []
+        }
+
+        logging.info(f"Created Word document: {file_path}")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error creating Word document {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_create_excel_document(tool_input: Dict[str, Any],
+                                   config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the create_excel_document tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    if doc_config.get('access_mode', 'read') != 'read_write':
+        return {"success": False, "error": "Write operations require access_mode: read_write"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+
+    file_path = tool_input.get('path')
+    sheets = tool_input.get('sheets', [])
+
+    if not file_path:
+        return {"success": False, "error": "Output file path is required"}
+
+    if not sheets:
+        return {"success": False, "error": "At least one sheet is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.parent.exists():
+        return {"success": False, "error": f"Parent directory does not exist: {full_path.parent}"}
+
+    try:
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        # Remove default sheet
+        if 'Sheet' in wb.sheetnames:
+            del wb['Sheet']
+
+        for sheet_data in sheets:
+            sheet_name = sheet_data.get('name', 'Sheet')
+            headers = sheet_data.get('headers', [])
+            data = sheet_data.get('data', [])
+
+            ws = wb.create_sheet(title=sheet_name)
+
+            # Add headers if provided
+            if headers:
+                for col, header in enumerate(headers, 1):
+                    ws.cell(row=1, column=col, value=header)
+                start_row = 2
+            else:
+                start_row = 1
+
+            # Add data
+            for row_idx, row_data in enumerate(data, start_row):
+                for col_idx, value in enumerate(row_data, 1):
+                    ws.cell(row=row_idx, column=col_idx, value=value)
+
+        wb.save(str(full_path))
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "size_bytes": full_path.stat().st_size,
+            "sheets_created": [s.get('name', 'Sheet') for s in sheets]
+        }
+
+        logging.info(f"Created Excel document: {file_path}")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error creating Excel document {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_create_powerpoint_document(tool_input: Dict[str, Any],
+                                        config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the create_powerpoint_document tool."""
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Document tools not configured"}
+
+    doc_config = config.get('embedded_tools', {}).get('documents', {})
+    if not doc_config.get('enabled', False):
+        return {"success": False, "error": "Document tools are not enabled"}
+
+    if doc_config.get('access_mode', 'read') != 'read_write':
+        return {"success": False, "error": "Write operations require access_mode: read_write"}
+
+    allowed_path = doc_config.get('allowed_path', '.')
+    templates_path = doc_config.get('creation', {}).get('templates_path')
+
+    file_path = tool_input.get('path')
+    slides_data = tool_input.get('slides', [])
+    template_path = tool_input.get('template_path')
+    placeholders = tool_input.get('placeholders', {})
+
+    if not file_path:
+        return {"success": False, "error": "Output file path is required"}
+
+    if not slides_data and not template_path:
+        return {"success": False, "error": "Either slides or template_path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.parent.exists():
+        return {"success": False, "error": f"Parent directory does not exist: {full_path.parent}"}
+
+    try:
+        from pptx import Presentation
+        from pptx.util import Inches, Pt
+
+        # Use template if provided
+        if template_path:
+            if templates_path:
+                template_full = Path(templates_path) / template_path
+            else:
+                template_validation = _validate_path(template_path, allowed_path)
+                if not template_validation['valid']:
+                    return {"success": False, "error": f"Template path error: {template_validation['error']}"}
+                template_full = Path(template_validation['resolved_path'])
+
+            if not template_full.exists():
+                return {"success": False, "error": f"Template does not exist: {template_path}"}
+
+            prs = Presentation(str(template_full))
+
+            # Replace placeholders in existing slides
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        for para in shape.text_frame.paragraphs:
+                            for run in para.runs:
+                                for key, value in placeholders.items():
+                                    if f"{{{{{key}}}}}" in run.text:
+                                        run.text = run.text.replace(f"{{{{{key}}}}}", str(value))
+        else:
+            prs = Presentation()
+
+        # Add new slides
+        for slide_data in slides_data:
+            layout_name = slide_data.get('layout', 'title_content')
+            title = slide_data.get('title', '')
+            content = slide_data.get('content', [])
+            notes = slide_data.get('notes', '')
+
+            # Map layout names to indices
+            layout_map = {
+                'title': 0,
+                'title_content': 1,
+                'content': 5,
+                'blank': 6
+            }
+            layout_idx = layout_map.get(layout_name, 1)
+
+            if layout_idx < len(prs.slide_layouts):
+                slide_layout = prs.slide_layouts[layout_idx]
+            else:
+                slide_layout = prs.slide_layouts[0]
+
+            slide = prs.slides.add_slide(slide_layout)
+
+            # Set title
+            if title and slide.shapes.title:
+                slide.shapes.title.text = title
+
+            # Add content
+            if content:
+                for shape in slide.shapes:
+                    if shape.has_text_frame and shape != slide.shapes.title:
+                        tf = shape.text_frame
+                        tf.clear()
+                        for i, text in enumerate(content):
+                            if i == 0:
+                                tf.paragraphs[0].text = text
+                            else:
+                                p = tf.add_paragraph()
+                                p.text = text
+                        break
+
+            # Add notes
+            if notes:
+                notes_slide = slide.notes_slide
+                notes_slide.notes_text_frame.text = notes
+
+        prs.save(str(full_path))
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "size_bytes": full_path.stat().st_size,
+            "slides_added": len(slides_data),
+            "used_template": template_path is not None,
+            "placeholders_replaced": list(placeholders.keys()) if placeholders else []
+        }
+
+        logging.info(f"Created PowerPoint document: {file_path}")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error creating PowerPoint document {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+# ============================================================================
+# Archive Tools
+# ============================================================================
+
+def _get_archive_tools(archive_config: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    Get archive tool definitions based on configuration.
+
+    Args:
+        archive_config: Archive tools configuration dictionary
+
+    Returns:
+        List of archive tool definitions
+    """
+    access_mode = archive_config.get('access_mode', 'read')
+    allowed_path = archive_config.get('allowed_path', '.')
+
+    tools = [
+        {
+            "name": "list_archive_contents",
+            "description": f"List the contents of an archive file within the allowed path ({allowed_path}). "
+                          "Supports .zip, .tar, .tar.gz, .tgz, and .tar.bz2 files. "
+                          "Returns file names, sizes, and modification times.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Path to the archive file"
+                    }
+                },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "read_archive_file",
+            "description": f"Read a specific file from within an archive without extracting to disk ({allowed_path}). "
+                          "Returns the file content. Text files are returned as strings, binary files as base64.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "archive_path": {
+                        "type": "string",
+                        "description": "Path to the archive file"
+                    },
+                    "file_path": {
+                        "type": "string",
+                        "description": "Path of the file within the archive to read"
+                    },
+                    "encoding": {
+                        "type": "string",
+                        "description": "Text encoding to use when reading as text (default: utf-8)",
+                        "default": "utf-8"
+                    },
+                    "as_binary": {
+                        "type": "boolean",
+                        "description": "Force reading as binary (returns base64)",
+                        "default": False
+                    }
+                },
+                "required": ["archive_path", "file_path"]
+            }
+        }
+    ]
+
+    # Extract tool (only if access_mode is read_write)
+    if access_mode == 'read_write':
+        tools.append({
+            "name": "extract_archive",
+            "description": f"Extract an archive file to a destination directory within the allowed path ({allowed_path}). "
+                          "Supports .zip, .tar, .tar.gz, .tgz, and .tar.bz2 files. "
+                          "Can extract all files or specific files only.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "archive_path": {
+                        "type": "string",
+                        "description": "Path to the archive file"
+                    },
+                    "destination": {
+                        "type": "string",
+                        "description": "Destination directory for extracted files"
+                    },
+                    "files": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific files to extract. If not provided, extracts all files."
+                    },
+                    "overwrite": {
+                        "type": "boolean",
+                        "description": "Overwrite existing files",
+                        "default": False
+                    }
+                },
+                "required": ["archive_path", "destination"]
+            }
+        })
+
+    return tools
+
+
+def _get_archive_type(file_path: Path) -> Optional[str]:
+    """Determine archive type from file extension."""
+    suffix = file_path.suffix.lower()
+    name = file_path.name.lower()
+
+    if suffix == '.zip':
+        return 'zip'
+    elif suffix == '.tar':
+        return 'tar'
+    elif name.endswith('.tar.gz') or suffix == '.tgz':
+        return 'tar.gz'
+    elif name.endswith('.tar.bz2'):
+        return 'tar.bz2'
+    return None
+
+
+def _execute_list_archive_contents(tool_input: Dict[str, Any],
+                                   config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the list_archive_contents tool."""
+    import zipfile
+    import tarfile
+
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Archive tools not configured"}
+
+    archive_config = config.get('embedded_tools', {}).get('archives', {})
+    if not archive_config.get('enabled', False):
+        return {"success": False, "error": "Archive tools are not enabled"}
+
+    allowed_path = archive_config.get('allowed_path', '.')
+    max_size_mb = archive_config.get('max_file_size_mb', 100)
+    max_files = archive_config.get('max_files_to_list', 1000)
+
+    file_path = tool_input.get('path')
+
+    if not file_path:
+        return {"success": False, "error": "Archive path is required"}
+
+    validation = _validate_path(file_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.exists():
+        return {"success": False, "error": f"Archive does not exist: {file_path}"}
+
+    if full_path.stat().st_size > max_size_mb * 1024 * 1024:
+        return {"success": False, "error": f"Archive exceeds maximum size of {max_size_mb} MB"}
+
+    archive_type = _get_archive_type(full_path)
+    if not archive_type:
+        return {"success": False, "error": f"Unsupported archive format: {full_path.suffix}"}
+
+    try:
+        files = []
+
+        if archive_type == 'zip':
+            with zipfile.ZipFile(str(full_path), 'r') as zf:
+                for info in zf.infolist()[:max_files]:
+                    files.append({
+                        "path": info.filename,
+                        "size_bytes": info.file_size,
+                        "compressed_size": info.compress_size,
+                        "is_directory": info.is_dir(),
+                        "modified": datetime(*info.date_time).isoformat() if info.date_time else None
+                    })
+        else:
+            mode = 'r:gz' if archive_type == 'tar.gz' else 'r:bz2' if archive_type == 'tar.bz2' else 'r'
+            with tarfile.open(str(full_path), mode) as tf:
+                count = 0
+                for member in tf:
+                    if count >= max_files:
+                        break
+                    files.append({
+                        "path": member.name,
+                        "size_bytes": member.size,
+                        "is_directory": member.isdir(),
+                        "modified": datetime.fromtimestamp(member.mtime).isoformat() if member.mtime else None
+                    })
+                    count += 1
+
+        result = {
+            "path": file_path,
+            "full_path": str(full_path),
+            "archive_type": archive_type,
+            "total_files": len(files),
+            "truncated": len(files) >= max_files,
+            "files": files
+        }
+
+        logging.info(f"Listed archive contents: {file_path} ({len(files)} files)")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error listing archive {file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_read_archive_file(tool_input: Dict[str, Any],
+                               config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the read_archive_file tool."""
+    import zipfile
+    import tarfile
+
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Archive tools not configured"}
+
+    archive_config = config.get('embedded_tools', {}).get('archives', {})
+    if not archive_config.get('enabled', False):
+        return {"success": False, "error": "Archive tools are not enabled"}
+
+    allowed_path = archive_config.get('allowed_path', '.')
+    max_size_mb = archive_config.get('max_file_size_mb', 100)
+
+    archive_path = tool_input.get('archive_path')
+    file_path = tool_input.get('file_path')
+    encoding = tool_input.get('encoding', 'utf-8')
+    as_binary = tool_input.get('as_binary', False)
+
+    if not archive_path:
+        return {"success": False, "error": "Archive path is required"}
+
+    if not file_path:
+        return {"success": False, "error": "File path within archive is required"}
+
+    validation = _validate_path(archive_path, allowed_path)
+    if not validation['valid']:
+        return {"success": False, "error": validation['error']}
+
+    full_path = Path(validation['resolved_path'])
+
+    if not full_path.exists():
+        return {"success": False, "error": f"Archive does not exist: {archive_path}"}
+
+    if full_path.stat().st_size > max_size_mb * 1024 * 1024:
+        return {"success": False, "error": f"Archive exceeds maximum size of {max_size_mb} MB"}
+
+    archive_type = _get_archive_type(full_path)
+    if not archive_type:
+        return {"success": False, "error": f"Unsupported archive format: {full_path.suffix}"}
+
+    try:
+        content = None
+
+        if archive_type == 'zip':
+            with zipfile.ZipFile(str(full_path), 'r') as zf:
+                if file_path not in zf.namelist():
+                    return {"success": False, "error": f"File not found in archive: {file_path}"}
+                content = zf.read(file_path)
+        else:
+            mode = 'r:gz' if archive_type == 'tar.gz' else 'r:bz2' if archive_type == 'tar.bz2' else 'r'
+            with tarfile.open(str(full_path), mode) as tf:
+                try:
+                    member = tf.getmember(file_path)
+                    f = tf.extractfile(member)
+                    if f:
+                        content = f.read()
+                    else:
+                        return {"success": False, "error": f"Cannot read directory: {file_path}"}
+                except KeyError:
+                    return {"success": False, "error": f"File not found in archive: {file_path}"}
+
+        # Try to decode as text unless binary requested
+        if as_binary:
+            result = {
+                "archive_path": archive_path,
+                "file_path": file_path,
+                "content_base64": base64.b64encode(content).decode('utf-8'),
+                "size_bytes": len(content),
+                "is_binary": True
+            }
+        else:
+            try:
+                text_content = content.decode(encoding)
+                result = {
+                    "archive_path": archive_path,
+                    "file_path": file_path,
+                    "content": text_content,
+                    "size_bytes": len(content),
+                    "encoding": encoding,
+                    "is_binary": False
+                }
+            except UnicodeDecodeError:
+                result = {
+                    "archive_path": archive_path,
+                    "file_path": file_path,
+                    "content_base64": base64.b64encode(content).decode('utf-8'),
+                    "size_bytes": len(content),
+                    "is_binary": True,
+                    "note": f"Could not decode as {encoding}, returned as base64"
+                }
+
+        logging.info(f"Read file from archive: {archive_path}/{file_path}")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error reading from archive {archive_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+
+def _execute_extract_archive(tool_input: Dict[str, Any],
+                             config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Execute the extract_archive tool."""
+    import zipfile
+    import tarfile
+
+    if not config.get('embedded_tools'):
+        return {"success": False, "error": "Archive tools not configured"}
+
+    archive_config = config.get('embedded_tools', {}).get('archives', {})
+    if not archive_config.get('enabled', False):
+        return {"success": False, "error": "Archive tools are not enabled"}
+
+    if archive_config.get('access_mode', 'read') != 'read_write':
+        return {"success": False, "error": "Extract operations require access_mode: read_write"}
+
+    allowed_path = archive_config.get('allowed_path', '.')
+    max_size_mb = archive_config.get('max_file_size_mb', 100)
+
+    archive_path = tool_input.get('archive_path')
+    destination = tool_input.get('destination')
+    files_to_extract = tool_input.get('files')
+    overwrite = tool_input.get('overwrite', False)
+
+    if not archive_path:
+        return {"success": False, "error": "Archive path is required"}
+
+    if not destination:
+        return {"success": False, "error": "Destination directory is required"}
+
+    # Validate archive path
+    archive_validation = _validate_path(archive_path, allowed_path)
+    if not archive_validation['valid']:
+        return {"success": False, "error": archive_validation['error']}
+
+    full_archive_path = Path(archive_validation['resolved_path'])
+
+    # Validate destination path
+    dest_validation = _validate_path(destination, allowed_path)
+    if not dest_validation['valid']:
+        return {"success": False, "error": dest_validation['error']}
+
+    full_dest_path = Path(dest_validation['resolved_path'])
+
+    if not full_archive_path.exists():
+        return {"success": False, "error": f"Archive does not exist: {archive_path}"}
+
+    if full_archive_path.stat().st_size > max_size_mb * 1024 * 1024:
+        return {"success": False, "error": f"Archive exceeds maximum size of {max_size_mb} MB"}
+
+    archive_type = _get_archive_type(full_archive_path)
+    if not archive_type:
+        return {"success": False, "error": f"Unsupported archive format: {full_archive_path.suffix}"}
+
+    try:
+        # Create destination directory
+        full_dest_path.mkdir(parents=True, exist_ok=True)
+
+        extracted_files = []
+
+        if archive_type == 'zip':
+            with zipfile.ZipFile(str(full_archive_path), 'r') as zf:
+                members = files_to_extract if files_to_extract else zf.namelist()
+                for member in members:
+                    if member in zf.namelist():
+                        dest_file = full_dest_path / member
+                        if dest_file.exists() and not overwrite:
+                            continue
+                        zf.extract(member, str(full_dest_path))
+                        extracted_files.append(member)
+        else:
+            mode = 'r:gz' if archive_type == 'tar.gz' else 'r:bz2' if archive_type == 'tar.bz2' else 'r'
+            with tarfile.open(str(full_archive_path), mode) as tf:
+                if files_to_extract:
+                    members = [tf.getmember(f) for f in files_to_extract if f in tf.getnames()]
+                else:
+                    members = tf.getmembers()
+
+                for member in members:
+                    dest_file = full_dest_path / member.name
+                    if dest_file.exists() and not overwrite:
+                        continue
+                    tf.extract(member, str(full_dest_path))
+                    extracted_files.append(member.name)
+
+        result = {
+            "archive_path": archive_path,
+            "destination": destination,
+            "full_destination": str(full_dest_path),
+            "files_extracted": len(extracted_files),
+            "extracted": extracted_files
+        }
+
+        logging.info(f"Extracted archive: {archive_path} -> {destination} ({len(extracted_files)} files)")
+        return {"success": True, "result": result}
+
+    except Exception as e:
+        logging.error(f"Error extracting archive {archive_path}: {e}")
         return {"success": False, "error": str(e)}

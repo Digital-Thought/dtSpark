@@ -603,6 +603,48 @@ embedded_tools:
     # - Use read-only mode when write operations are not needed
     # - Consider using specific subdirectories rather than root paths
 
+  # Document Tools (MS Office and PDF)
+  # Tools for reading and creating Microsoft Office documents and PDFs
+  documents:
+    enabled: false  # Set to true to enable document reading/creation tools
+    allowed_path: ./  # Root path for document operations (files must be within this path)
+    access_mode: read  # Access mode: "read" (read-only) or "read_write" (read and create)
+                       # read: Only read operations (read_word_document, read_excel_document, etc.)
+                       # read_write: Adds create operations (create_word_document, etc.)
+    max_file_size_mb: 50  # Maximum file size for document operations (in megabytes)
+
+    # Document reading options
+    reading:
+      max_pdf_pages: 100  # Maximum pages to extract from PDF documents
+      max_excel_rows: 10000  # Maximum rows to read from Excel spreadsheets
+
+    # Document creation options (only applies when access_mode is 'read_write')
+    creation:
+      templates_path: null  # Optional: path to directory containing document templates
+                            # Templates use {{placeholder_name}} syntax for replacements
+      default_author: null  # Optional: default author name for created documents
+
+    # Supported formats:
+    # - Word: .docx (read and create)
+    # - Excel: .xlsx (read and create)
+    # - PowerPoint: .pptx (read and create)
+    # - PDF: .pdf (read only)
+
+  # Archive Tools
+  # Tools for reading and extracting compressed archive files
+  archives:
+    enabled: false  # Set to true to enable archive tools
+    allowed_path: ./  # Root path for archive operations (files must be within this path)
+    access_mode: read  # Access mode: "read" (list/read only) or "read_write" (includes extraction)
+                       # read: Only list_archive_contents and read_archive_file operations
+                       # read_write: Adds extract_archive operation
+    max_file_size_mb: 100  # Maximum archive size for operations (in megabytes)
+    max_files_to_list: 1000  # Maximum number of files to list from an archive
+
+    # Supported formats:
+    # - ZIP: .zip
+    # - TAR: .tar, .tar.gz, .tgz, .tar.bz2
+
 # Tool Permissions
 # Controls how tool usage permissions are handled
 tool_permissions:

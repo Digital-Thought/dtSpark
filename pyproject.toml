@@ -64,6 +64,13 @@ dependencies = [
     "anthropic>=0.18.0",
     "APScheduler>=3.10.0",
     "markdown>=3.4.0",
+    # MS Office document handling
+    "python-docx>=0.8.11",
+    "openpyxl>=3.1.0",
+    "python-pptx>=0.6.21",
+    "pdfplumber>=0.10.0",
+    "python-magic-bin>=0.4.14;sys_platform=='win32'",
+    "python-magic>=0.4.27;sys_platform!='win32'",
 ]
 
 [project.optional-dependencies]

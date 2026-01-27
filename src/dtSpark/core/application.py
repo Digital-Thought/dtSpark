@@ -1656,6 +1656,122 @@ class AWSBedrockCLI(AbstractApp):
             filesystem_access_mode = access_mode_choices[access_mode_choice]
 
         # ═══════════════════════════════════════════════════════════════
+        # Embedded Document Tools (MS Office & PDF)
+        # ═══════════════════════════════════════════════════════════════
+        cli.console.print()
+        enable_document_tools = Confirm.ask("Enable embedded document tools (MS Office & PDF)?", default=False)
+
+        # Default values
+        document_allowed_path = "./running"
+        document_access_mode = "read"
+        document_max_file_size = "50"
+        document_max_pdf_pages = "100"
+        document_max_excel_rows = "10000"
+        document_templates_path = ""
+        document_default_author = ""
+
+        if enable_document_tools:
+            cli.console.print()
+            cli.console.print("[dim]Document tools allow reading and creating MS Office documents (Word, Excel, PowerPoint) and PDFs.[/dim]")
+            cli.console.print()
+
+            document_allowed_path = Prompt.ask(
+                "Allowed directory path for documents",
+                default="./running"
+            )
+
+            # Access mode
+            doc_access_mode_choices = {
+                "1": "read",
+                "2": "read_write"
+            }
+            cli.console.print()
+            cli.console.print("  [1] Read - Read documents only")
+            cli.console.print("  [2] Read/Write - Read and create documents")
+            cli.console.print()
+            doc_access_mode_choice = Prompt.ask(
+                "Select access mode",
+                choices=["1", "2"],
+                default="1"
+            )
+            document_access_mode = doc_access_mode_choices[doc_access_mode_choice]
+
+            document_max_file_size = Prompt.ask(
+                "Maximum file size in MB",
+                default="50"
+            )
+
+            document_max_pdf_pages = Prompt.ask(
+                "Maximum PDF pages to read",
+                default="100"
+            )
+
+            document_max_excel_rows = Prompt.ask(
+                "Maximum Excel rows to read",
+                default="10000"
+            )
+
+            if document_access_mode == "read_write":
+                cli.console.print()
+                cli.console.print("[dim]Templates allow creating documents with placeholder substitution.[/dim]")
+                document_templates_path = Prompt.ask(
+                    "Templates directory path (leave empty to disable)",
+                    default=""
+                )
+                document_default_author = Prompt.ask(
+                    "Default author for created documents (leave empty to disable)",
+                    default=""
+                )
+
+        # ═══════════════════════════════════════════════════════════════
+        # Embedded Archive Tools
+        # ═══════════════════════════════════════════════════════════════
+        cli.console.print()
+        enable_archive_tools = Confirm.ask("Enable embedded archive tools (ZIP, TAR)?", default=False)
+
+        # Default values
+        archive_allowed_path = "./running"
+        archive_access_mode = "read"
+        archive_max_file_size = "100"
+        archive_max_files_to_list = "1000"
+
+        if enable_archive_tools:
+            cli.console.print()
+            cli.console.print("[dim]Archive tools allow reading and extracting ZIP and TAR archives.[/dim]")
+            cli.console.print()
+
+            archive_allowed_path = Prompt.ask(
+                "Allowed directory path for archives",
+                default="./running"
+            )
+
+            # Access mode
+            archive_access_mode_choices = {
+                "1": "read",
+                "2": "read_write"
+            }
+            cli.console.print()
+            cli.console.print("  [1] Read - List contents and read files from archives")
+            cli.console.print("  [2] Read/Write - Read and extract archives to disk")
+            cli.console.print()
+            archive_access_mode_choice = Prompt.ask(
+                "Select access mode",
+                choices=["1", "2"],
+                default="1"
+            )
+            archive_access_mode = archive_access_mode_choices[archive_access_mode_choice]
+
+            archive_max_file_size = Prompt.ask(
+                "Maximum archive file size in MB",
+                default="100"
+            )
+
+            archive_max_files_to_list = Prompt.ask(
+                "Maximum files to list from archive",
+                default="1000"
+            )
+
+        # ═══════════════════════════════════════════════════════════════
         # Tool Permissions
         # ═══════════════════════════════════════════════════════════════
         cli.console.print()
@@ -2037,6 +2153,95 @@ class AWSBedrockCLI(AbstractApp):
                 config_content = re.sub(
                     r'(access_mode:\s+)(read|read_write)',
                     f'\\g<1>{filesystem_access_mode}',
+                    config_content
+                )
+
+            # Embedded Document Tools
+            config_content = re.sub(
+                r'(documents:\s*\n\s+enabled:\s+)(true|false)',
+                f'\\g<1>{str(enable_document_tools).lower()}',
+                config_content
+            )
+            if enable_document_tools:
+                # Allowed path
+                escaped_doc_path = document_allowed_path.replace('\\', '/')
+                config_content = re.sub(
+                    r'(documents:\s*\n\s+enabled:\s+(?:true|false)\s*\n\s+allowed_path:\s+)[^\s#]+',
+                    f'\\g<1>{escaped_doc_path}',
+                    config_content
+                )
+                # Access mode
+                config_content = re.sub(
+                    r'(documents:\s*\n\s+enabled:\s+(?:true|false)\s*\n\s+allowed_path:\s+[^\s#]+\s*\n\s+access_mode:\s+)(read|read_write)',
+                    f'\\g<1>{document_access_mode}',
+                    config_content
+                )
+                # Max file size
+                config_content = re.sub(
+                    r'(documents:.*?max_file_size_mb:\s+)\d+',
+                    f'\\g<1>{document_max_file_size}',
+                    config_content,
+                    flags=re.DOTALL
+                )
+                # Max PDF pages
+                config_content = re.sub(
+                    r'(max_pdf_pages:\s+)\d+',
+                    f'\\g<1>{document_max_pdf_pages}',
+                    config_content
+                )
+                # Max Excel rows
+                config_content = re.sub(
+                    r'(max_excel_rows:\s+)\d+',
+                    f'\\g<1>{document_max_excel_rows}',
+                    config_content
+                )
+                # Templates path (if provided)
+                if document_templates_path:
+                    escaped_templates_path = document_templates_path.replace('\\', '/')
+                    config_content = re.sub(
+                        r'(templates_path:\s+)(null|[^\s#]+)',
+                        f'\\g<1>{escaped_templates_path}',
+                        config_content
+                    )
+                # Default author (if provided)
+                if document_default_author:
+                    config_content = re.sub(
+                        r'(default_author:\s+)(null|[^\s#]+)',
+                        f'\\g<1>{document_default_author}',
+                        config_content
+                    )
+
+            # Embedded Archive Tools
+            config_content = re.sub(
+                r'(archives:\s*\n\s+enabled:\s+)(true|false)',
+                f'\\g<1>{str(enable_archive_tools).lower()}',
+                config_content
+            )
+            if enable_archive_tools:
+                # Allowed path
+                escaped_archive_path = archive_allowed_path.replace('\\', '/')
+                config_content = re.sub(
+                    r'(archives:\s*\n\s+enabled:\s+(?:true|false)\s*\n\s+allowed_path:\s+)[^\s#]+',
+                    f'\\g<1>{escaped_archive_path}',
+                    config_content
+                )
+                # Access mode
+                config_content = re.sub(
+                    r'(archives:\s*\n\s+enabled:\s+(?:true|false)\s*\n\s+allowed_path:\s+[^\s#]+\s*\n\s+access_mode:\s+)(read|read_write)',
+                    f'\\g<1>{archive_access_mode}',
+                    config_content
+                )
+                # Max file size
+                config_content = re.sub(
+                    r'(archives:.*?max_file_size_mb:\s+)\d+',
+                    f'\\g<1>{archive_max_file_size}',
+                    config_content,
+                    flags=re.DOTALL
+                )
+                # Max files to list
+                config_content = re.sub(
+                    r'(max_files_to_list:\s+)\d+',
+                    f'\\g<1>{archive_max_files_to_list}',
                     config_content
                 )
 

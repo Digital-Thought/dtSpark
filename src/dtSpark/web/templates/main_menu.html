@@ -795,39 +795,81 @@ async function selectToolSource(source, event) {
     const contentEl = document.getElementById('tool-details-content');
 
     if (source === 'embedded') {
-        // Show embedded tools
+        // Show embedded tools - fetch dynamically from API
         headerEl.innerHTML = '<i class="bi bi-box-fill"></i> Embedded Tools';
         contentEl.innerHTML = `
-            <div class="list-group list-group-flush">
-                <div class="list-group-item bg-transparent border-secondary">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <strong>execute_mcp_tool</strong>
-                            <p class="text-muted small mb-0 mt-1">Execute a tool provided by an MCP server</p>
-                        </div>
-                        <span class="badge bg-info">Core</span>
-                    </div>
-                </div>
-                <div class="list-group-item bg-transparent border-secondary">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <strong>conversation_search</strong>
-                            <p class="text-muted small mb-0 mt-1">Search through conversation history</p>
-                        </div>
-                        <span class="badge bg-info">Core</span>
-                    </div>
-                </div>
-                <div class="list-group-item bg-transparent border-secondary">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <strong>file_attachment</strong>
-                            <p class="text-muted small mb-0 mt-1">Attach files to the conversation context</p>
-                        </div>
-                        <span class="badge bg-info">Core</span>
-                    </div>
-                </div>
+            <div class="text-center py-4">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span class="ms-2">Loading embedded tools...</span>
             </div>
         `;
+
+        try {
+            const response = await fetch('/api/embedded-tools');
+            const tools = await response.json();
+
+            if (tools.length === 0) {
+                contentEl.innerHTML = `
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-inbox fs-2 d-block mb-2"></i>
+                        <p class="mb-0">No embedded tools enabled</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group tools by category
+            const categories = {};
+            tools.forEach(tool => {
+                const cat = tool.category || 'Core';
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(tool);
+            });
+
+            // Define category badge colours
+            const categoryBadges = {
+                'Core': 'bg-info',
+                'Filesystem': 'bg-success',
+                'Documents': 'bg-primary',
+                'Archives': 'bg-warning text-dark'
+            };
+
+            // Render tools grouped by category
+            let html = '<div class="list-group list-group-flush">';
+
+            // Order categories: Core, Filesystem, Documents, Archives
+            const categoryOrder = ['Core', 'Filesystem', 'Documents', 'Archives'];
+            categoryOrder.forEach(category => {
+                if (categories[category]) {
+                    categories[category].forEach(tool => {
+                        const badgeClass = categoryBadges[category] || 'bg-secondary';
+                        html += `
+                            <div class="list-group-item bg-transparent border-secondary">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <strong>${tool.name}</strong>
+                                        <p class="text-muted small mb-0 mt-1">${tool.description}</p>
+                                    </div>
+                                    <span class="badge ${badgeClass}">${category}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+            });
+
+            html += '</div>';
+            contentEl.innerHTML = html;
+
+        } catch (error) {
+            console.error('Error loading embedded tools:', error);
+            contentEl.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    Failed to load embedded tools: ${error.message}
+                </div>
+            `;
+        }
     } else if (source.startsWith('mcp:')) {
         // Show MCP server tools
         const serverName = source.substring(4);
