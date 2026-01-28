@@ -252,9 +252,19 @@ async def command_info(
                     "tokens_sent": conv.get('tokens_sent', 0),
                     "tokens_received": conv.get('tokens_received', 0),
                     "total_tokens": conv.get('tokens_sent', 0) + conv.get('tokens_received', 0),
+                    "instructions": conv.get('instructions', ''),
                 },
                 "model_usage": model_usage,
                 "files": [f['filename'] for f in files],
+                "attached_files": [
+                    {
+                        "id": f['id'],
+                        "filename": f['filename'],
+                        "size_bytes": f.get('size_bytes', 0),
+                        "mime_type": f.get('mime_type', 'application/octet-stream'),
+                    }
+                    for f in files
+                ],
                 "mcp_servers": mcp_servers,
                 "rollup_settings": rollup_info,
             },
@@ -567,6 +577,143 @@ async def toggle_mcp_server(
 
     except Exception as e:
         logger.error(f"Error toggling MCP server for conversation {conversation_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/{conversation_id}/command/instructions")
+async def update_instructions(
+    request: Request,
+    conversation_id: int,
+    instructions: str = Form(""),
+    session_id: str = Depends(get_current_session),
+):
+    """
+    Update conversation instructions/system prompt.
+
+    Args:
+        request: FastAPI request
+        conversation_id: ID of the conversation
+        instructions: New instructions text (empty to clear)
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse with status
+    """
+    try:
+        app_instance = request.app.state.app_instance
+
+        # Check if conversation is predefined
+        if app_instance.database.is_conversation_predefined(conversation_id):
+            return CommandResponse(
+                command="instructions",
+                status="error",
+                message="Cannot modify instructions for predefined conversations",
+                data=None,
+            )
+
+        # Set conversation context if needed
+        if app_instance.conversation_manager.current_conversation_id != conversation_id:
+            app_instance.conversation_manager.load_conversation(conversation_id)
+
+        # Update instructions (None to clear, or the text)
+        new_instructions = instructions.strip() if instructions.strip() else None
+        success = app_instance.conversation_manager.update_instructions(new_instructions)
+
+        if success:
+            return CommandResponse(
+                command="instructions",
+                status="success",
+                message="Instructions updated successfully",
+                data={"instructions": new_instructions},
+            )
+        else:
+            return CommandResponse(
+                command="instructions",
+                status="error",
+                message="Failed to update instructions",
+                data=None,
+            )
+
+    except Exception as e:
+        logger.error(f"Error updating instructions for conversation {conversation_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/{conversation_id}/command/deletefiles")
+async def delete_files(
+    request: Request,
+    conversation_id: int,
+    session_id: str = Depends(get_current_session),
+):
+    """
+    Delete attached files from a conversation.
+
+    Args:
+        request: FastAPI request
+        conversation_id: ID of the conversation
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse with deletion status
+    """
+    try:
+        app_instance = request.app.state.app_instance
+
+        # Check if conversation is predefined
+        if app_instance.database.is_conversation_predefined(conversation_id):
+            return CommandResponse(
+                command="deletefiles",
+                status="error",
+                message="Cannot delete files from predefined conversations",
+                data=None,
+            )
+
+        # Parse JSON body for file_ids
+        body = await request.json()
+        file_ids = body.get('file_ids', [])
+
+        if not file_ids:
+            return CommandResponse(
+                command="deletefiles",
+                status="error",
+                message="No file IDs provided",
+                data=None,
+            )
+
+        # Delete each file
+        deleted_count = 0
+        failed_ids = []
+
+        for file_id in file_ids:
+            try:
+                if app_instance.database.delete_file(file_id):
+                    deleted_count += 1
+                else:
+                    failed_ids.append(file_id)
+            except Exception as e:
+                logger.warning(f"Failed to delete file {file_id}: {e}")
+                failed_ids.append(file_id)
+
+        if deleted_count > 0:
+            return CommandResponse(
+                command="deletefiles",
+                status="success",
+                message=f"Deleted {deleted_count} file(s)",
+                data={
+                    "deleted_count": deleted_count,
+                    "failed_ids": failed_ids,
+                },
+            )
+        else:
+            return CommandResponse(
+                command="deletefiles",
+                status="error",
+                message="Failed to delete files",
+                data={"failed_ids": failed_ids},
+            )
+
+    except Exception as e:
+        logger.error(f"Error deleting files for conversation {conversation_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

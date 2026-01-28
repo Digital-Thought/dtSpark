@@ -7,14 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- Nothing yet
+---
 
-### Changed
-- Nothing yet
+## [1.1.0a1]
+
+### Added
+
+#### Web UI Commands
+- Change Instructions command to edit conversation system prompt
+- Copy Last Response command to copy assistant's last message to clipboard
+- Delete Attached Files command to remove files from conversation
+- Delete Conversation command
+
+#### API Endpoints
+- `POST /command/instructions` endpoint for updating conversation instructions
+- `POST /command/deletefiles` endpoint for deleting attached files
+- Info endpoint now returns `instructions` field and full `attached_files` data with IDs and sizes
 
 ### Fixed
-- Nothing yet
+- Document and archive tools not loading when enabled in config (config not passed to ConversationManager)
 
 ---
 
@@ -267,6 +278,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.1.0a1 | Web UI commands (instructions, copy, delete files/conversation), document tools config fix |
 | 1.0.11 | MS Office document tools, archive tools, Web UI embedded tools fix |
 | 1.0.10 | Fix config.yaml created in wrong directory |
 | 1.0.9 | Secrets written to secrets.yaml, CONTAINER_MODE config path support |

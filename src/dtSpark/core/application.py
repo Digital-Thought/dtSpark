@@ -779,6 +779,27 @@ class AWSBedrockCLI(AbstractApp):
                         'enabled': self.settings.get('embedded_tools.filesystem.enabled', False),
                         'allowed_path': self.settings.get('embedded_tools.filesystem.allowed_path', './'),
                         'access_mode': self.settings.get('embedded_tools.filesystem.access_mode', 'read')
+                    },
+                    'documents': {
+                        'enabled': self.settings.get('embedded_tools.documents.enabled', False),
+                        'allowed_path': self.settings.get('embedded_tools.documents.allowed_path', './'),
+                        'access_mode': self.settings.get('embedded_tools.documents.access_mode', 'read'),
+                        'max_file_size_mb': self.settings.get('embedded_tools.documents.max_file_size_mb', 50),
+                        'reading': {
+                            'max_pdf_pages': self.settings.get('embedded_tools.documents.reading.max_pdf_pages', 100),
+                            'max_excel_rows': self.settings.get('embedded_tools.documents.reading.max_excel_rows', 10000)
+                        },
+                        'creation': {
+                            'templates_path': self.settings.get('embedded_tools.documents.creation.templates_path'),
+                            'default_author': self.settings.get('embedded_tools.documents.creation.default_author')
+                        }
+                    },
+                    'archives': {
+                        'enabled': self.settings.get('embedded_tools.archives.enabled', False),
+                        'allowed_path': self.settings.get('embedded_tools.archives.allowed_path', './'),
+                        'access_mode': self.settings.get('embedded_tools.archives.access_mode', 'read'),
+                        'max_file_size_mb': self.settings.get('embedded_tools.archives.max_file_size_mb', 100),
+                        'max_files_to_list': self.settings.get('embedded_tools.archives.max_files_to_list', 1000)
                     }
                 }
             }
