@@ -328,34 +328,6 @@ class AWSBedrockCLI(AbstractApp):
 
         logging.info('Initialising application components')
 
-        # Debug: Diagnose settings loading for llm_providers
-        # Try different access patterns to understand how Settings class works
-        logging.info("=== Settings Diagnostics ===")
-
-        # Try accessing the whole llm_providers section
-        llm_providers_raw = self.settings.get('llm_providers', None)
-        logging.info(f"settings.get('llm_providers'): {llm_providers_raw} (type: {type(llm_providers_raw).__name__ if llm_providers_raw else 'None'})")
-
-        # Try accessing aws_bedrock under llm_providers
-        aws_bedrock_raw = self.settings.get('llm_providers.aws_bedrock', None)
-        logging.info(f"settings.get('llm_providers.aws_bedrock'): {aws_bedrock_raw} (type: {type(aws_bedrock_raw).__name__ if aws_bedrock_raw else 'None'})")
-
-        # If llm_providers is a dict, try to access nested values directly
-        if isinstance(llm_providers_raw, dict):
-            logging.info(f"llm_providers keys: {list(llm_providers_raw.keys())}")
-            aws_bedrock_dict = llm_providers_raw.get('aws_bedrock', {})
-            logging.info(f"llm_providers['aws_bedrock']: {aws_bedrock_dict}")
-            if isinstance(aws_bedrock_dict, dict):
-                logging.info(f"aws_bedrock['enabled']: {aws_bedrock_dict.get('enabled', 'NOT_FOUND')}")
-
-        # Check if settings has a _settings or similar internal dict
-        if hasattr(self.settings, '_settings'):
-            logging.info(f"settings._settings type: {type(self.settings._settings)}")
-        if hasattr(self.settings, 'settings'):
-            logging.info(f"settings.settings type: {type(self.settings.settings)}")
-
-        logging.info("=== End Settings Diagnostics ===")
-
         # Initialise CLI interface
         self.cli = CLIInterface()
 

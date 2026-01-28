@@ -9,7 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0a1]
+## [1.1.0a2] - 2026-01-28
+
+### Fixed
+- Create Word document tool now gracefully handles invalid/custom styles by falling back to 'Normal' style
+- Remove settings diagnostics that were logging sensitive API keys in plain text (security fix)
+
+---
+
+## [1.1.0a1] - 2026-01-28
 
 ### Added
 
@@ -278,6 +286,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.1.0a2 | Fix create_word_document style handling, remove sensitive data from logs |
 | 1.1.0a1 | Web UI commands (instructions, copy, delete files/conversation), document tools config fix |
 | 1.0.11 | MS Office document tools, archive tools, Web UI embedded tools fix |
 | 1.0.10 | Fix config.yaml created in wrong directory |

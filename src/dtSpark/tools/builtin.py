@@ -1630,6 +1630,17 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
             if content.get('title'):
                 doc.add_heading(content['title'], 0)
 
+            # Define valid built-in styles that python-docx supports
+            valid_styles = {
+                'Normal', 'Title', 'Subtitle', 'Quote', 'Intense Quote',
+                'List Paragraph', 'List Bullet', 'List Number',
+                'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4',
+                'Heading 5', 'Heading 6', 'Heading 7', 'Heading 8', 'Heading 9',
+                'Body Text', 'Body Text 2', 'Body Text 3',
+                'Caption', 'Macro Text', 'No Spacing'
+            }
+            invalid_styles_used = set()
+
             # Add paragraphs
             for para_data in content.get('paragraphs', []):
                 text = para_data.get('text', '')
@@ -1638,7 +1649,14 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                     level = int(style.split()[-1]) if style.split()[-1].isdigit() else 1
                     doc.add_heading(text, level)
                 else:
+                    # Validate style - fall back to Normal if invalid
+                    if style not in valid_styles:
+                        invalid_styles_used.add(style)
+                        style = 'Normal'
                     doc.add_paragraph(text, style=style)
+
+            if invalid_styles_used:
+                logging.warning(f"Invalid styles replaced with 'Normal': {', '.join(sorted(invalid_styles_used))}")
 
         doc.save(str(full_path))
 
