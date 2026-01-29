@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a3] - 2026-01-29
+
+### Fixed
+- Web UI now enforces `mandatory_model` and `mandatory_provider` configuration settings
+- Model selection is locked and displays info message when mandatory model is configured
+- Change Model command in chat blocked when model is locked via configuration
+- `mandatory_provider` not defined error in predefined conversation synchronisation (NameError)
+- Inline instruction text (e.g., "You are a helpful assistant.") no longer triggers ResourceManager file lookup errors
+
+### Changed
+- `/api/models` endpoint now returns mandatory model configuration alongside model list
+- `POST /api/conversations` enforces mandatory model by overriding submitted model_id
+
+---
+
 ## [1.1.0a2] - 2026-01-28
 
 ### Fixed
@@ -286,6 +301,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.1.0a3 | Enforce mandatory model in Web UI, fix predefined conversation errors |
 | 1.1.0a2 | Fix create_word_document style handling, remove sensitive data from logs |
 | 1.1.0a1 | Web UI commands (instructions, copy, delete files/conversation), document tools config fix |
 | 1.0.11 | MS Office document tools, archive tools, Web UI embedded tools fix |

@@ -624,7 +624,8 @@ async function loadModels() {
         const response = await fetch('/api/models');
         if (!response.ok) throw new Error('Failed to load models');
 
-        availableModels = await response.json();
+        const data = await response.json();
+        availableModels = data.models || data;
 
         const select = document.getElementById('actionModel');
         select.innerHTML = '<option value="">Select a model...</option>';

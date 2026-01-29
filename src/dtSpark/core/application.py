@@ -1016,8 +1016,9 @@ class AWSBedrockCLI(AbstractApp):
                 logging.debug("Predefined conversations not enabled in config")
                 return
 
-            # Get the mandatory model setting
+            # Get the mandatory model and provider settings
             mandatory_model = self._get_nested_setting('llm_providers.mandatory_model', None)
+            mandatory_provider = self._get_nested_setting('llm_providers.mandatory_provider', None)
 
             # Get list of predefined conversations
             predefined_convs = self.settings.get('predefined_conversations.conversations', [])
@@ -1135,27 +1136,45 @@ class AWSBedrockCLI(AbstractApp):
         if not source or not source.strip():
             return source
 
-        # Try ResourceManager first
-        try:
-            resource_content = ResourceManager().load_resource(source)
-            if resource_content is not None:
-                logging.info(f"Loaded {description} via ResourceManager from: {source}")
-                return resource_content
-        except Exception as e:
-            logging.debug(f"ResourceManager could not load {description} from '{source}': {e}")
+        import os
 
-        # Try direct file path
-        try:
-            import os
-            if os.path.isfile(source):
-                with open(source, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    logging.info(f"Loaded {description} from file path: {source}")
-                    return content
-        except Exception as e:
-            logging.debug(f"Could not load {description} from file path '{source}': {e}")
+        # Determine if source looks like a file path or resource name
+        # (contains path separators, has a file extension, or doesn't contain spaces)
+        looks_like_path = (
+            os.sep in source
+            or '/' in source
+            or '\\' in source
+            or (
+                '.' in source
+                and not source.strip().endswith('.')
+                and ' ' not in source.strip()
+            )
+        )
 
-        # If both methods fail, assume it's inline text
+        if looks_like_path:
+            # Try ResourceManager first (for package resources)
+            try:
+                resource_content = ResourceManager().load_resource(source)
+                if resource_content is not None:
+                    logging.info(f"Loaded {description} via ResourceManager from: {source}")
+                    return resource_content
+            except Exception as e:
+                logging.debug(f"ResourceManager could not load {description} from '{source}': {e}")
+
+            # Try direct file path
+            try:
+                if os.path.isfile(source):
+                    with open(source, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        logging.info(f"Loaded {description} from file path: {source}")
+                        return content
+            except Exception as e:
+                logging.debug(f"Could not load {description} from file path '{source}': {e}")
+
+            # Path-like source but couldn't load - log warning and return as-is
+            logging.warning(f"Could not load {description} from path '{source}', using as inline text")
+
+        # Treat as inline text
         logging.debug(f"Using inline text for {description}")
         return source
 

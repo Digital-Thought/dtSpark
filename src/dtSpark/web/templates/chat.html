@@ -324,70 +324,72 @@ async function performExport() {
 
 // Change model
 async function showChangeModelModal() {
-    const modalHTML = `
-        <div class="modal fade" id="changeModelModal" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> Change Model</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label">Select New Model</label>
-                            <select class="form-select" id="new-model-select">
-                                <option value="">Loading models...</option>
-                            </select>
+    // Check if model is locked first
+    try {
+        const configResponse = await fetch('/api/models');
+        const configData = await configResponse.json();
+
+        if (configData.model_locked) {
+            showToast(`Model changing is disabled - model is locked to '${configData.mandatory_model}' via configuration`, 'error');
+            return;
+        }
+
+        const models = configData.models || configData;
+
+        const modalHTML = `
+            <div class="modal fade" id="changeModelModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"><i class="bi bi-arrow-repeat"></i> Change Model</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-primary" onclick="performChangeModel()">
-                            <i class="bi bi-check-circle-fill"></i> Change Model
-                        </button>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label">Select New Model</label>
+                                <select class="form-select" id="new-model-select">
+                                    <option value="">Select a model...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="performChangeModel()">
+                                <i class="bi bi-check-circle-fill"></i> Change Model
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    `;
+        `;
 
-    // Remove old modal if exists
-    const oldModal = document.getElementById('changeModelModal');
-    if (oldModal) oldModal.remove();
+        // Remove old modal if exists
+        const oldModal = document.getElementById('changeModelModal');
+        if (oldModal) oldModal.remove();
 
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-
-    // Load models
-    try {
-        const response = await fetch('/api/models');
-        const models = await response.json();
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
 
         const select = document.getElementById('new-model-select');
-        select.innerHTML = '<option value="">Select a model...</option>';
-
         models.forEach(model => {
             const option = document.createElement('option');
             option.value = model.id;
 
-            // Show service provider and optionally model maker
             let displayText = model.name;
             if (model.model_maker && model.provider !== model.model_maker) {
-                // Show both: "Model Name [Model Maker via Service Provider]"
                 displayText += ` [${model.model_maker} via ${model.provider}]`;
             } else {
-                // Show service only: "Model Name [Service Provider]"
                 displayText += ` [${model.provider}]`;
             }
 
             option.textContent = displayText;
             select.appendChild(option);
         });
-    } catch (error) {
-        document.getElementById('new-model-select').innerHTML = '<option value="">Failed to load models</option>';
-    }
 
-    const modal = new bootstrap.Modal(document.getElementById('changeModelModal'));
-    modal.show();
+        const modal = new bootstrap.Modal(document.getElementById('changeModelModal'));
+        modal.show();
+    } catch (error) {
+        showToast('Failed to load models', 'error');
+    }
 }
 
 async function performChangeModel() {

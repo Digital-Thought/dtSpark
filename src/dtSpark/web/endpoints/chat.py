@@ -448,6 +448,16 @@ async def command_change_model(
     try:
         app_instance = request.app.state.app_instance
 
+        # Check if model is locked via configuration
+        mandatory_model = getattr(app_instance, 'configured_model_id', None)
+        if mandatory_model:
+            return CommandResponse(
+                command="changemodel",
+                status="error",
+                message=f"Model changing is disabled - model is locked to '{mandatory_model}' via configuration",
+                data=None,
+            )
+
         # Load conversation
         app_instance.conversation_manager.load_conversation(conversation_id)
 

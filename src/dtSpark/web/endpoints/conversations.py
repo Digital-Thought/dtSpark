@@ -179,6 +179,14 @@ async def create_conversation(
         database = app_instance.database
         conversation_manager = app_instance.conversation_manager
 
+        # Enforce mandatory model if configured
+        mandatory_model = getattr(app_instance, 'configured_model_id', None)
+        mandatory_provider = getattr(app_instance, 'configured_provider', None)
+        if mandatory_model:
+            model_id = mandatory_model
+            logger.info(f"Mandatory model enforced: {model_id}"
+                        f"{f' via {mandatory_provider}' if mandatory_provider else ''}")
+
         # Create conversation in database
         conversation_id = database.create_conversation(
             name=name,
@@ -190,7 +198,7 @@ async def create_conversation(
         conversation_manager.load_conversation(conversation_id)
 
         # Set the model from the conversation and update service references
-        app_instance.llm_manager.set_model(model_id)
+        app_instance.llm_manager.set_model(model_id, mandatory_provider)
         app_instance.bedrock_service = app_instance.llm_manager.get_active_service()
         conversation_manager.update_service(app_instance.bedrock_service)
 
@@ -325,28 +333,58 @@ async def delete_conversation(
 async def list_models(
     request: Request,
     session_id: str = Depends(get_current_session),
-) -> List[dict]:
+) -> dict:
     """
-    Get available models.
+    Get available models and mandatory model configuration.
 
     Returns:
-        List of available models with their IDs and names
+        Dictionary with models list and mandatory model info
     """
     try:
         app_instance = request.app.state.app_instance
 
-        # Get available models from LLM manager
-        models = app_instance.llm_manager.list_all_models()
+        mandatory_model = getattr(app_instance, 'configured_model_id', None)
+        mandatory_provider = getattr(app_instance, 'configured_provider', None)
 
-        return [
+        # Get available models from LLM manager
+        all_models = app_instance.llm_manager.list_all_models()
+
+        models = [
             {
                 "id": model.get('id', model.get('name', 'unknown')),
                 "name": model.get('name', 'Unknown'),
                 "provider": model.get('provider', 'Unknown'),
-                "model_maker": model.get('model_maker'),  # Optional: model creator (for Bedrock models)
+                "model_maker": model.get('model_maker'),
             }
-            for model in models
+            for model in all_models
         ]
+
+        # If mandatory model is set, filter to matching models only
+        if mandatory_model:
+            filtered = [
+                m for m in models
+                if m['id'] == mandatory_model
+                or m['name'] == mandatory_model
+            ]
+
+            # Further filter by provider if mandatory_provider is set
+            if mandatory_provider and filtered:
+                provider_filtered = [
+                    m for m in filtered
+                    if m['provider'] == mandatory_provider
+                ]
+                if provider_filtered:
+                    filtered = provider_filtered
+
+            if filtered:
+                models = filtered
+
+        return {
+            "models": models,
+            "mandatory_model": mandatory_model,
+            "mandatory_provider": mandatory_provider,
+            "model_locked": mandatory_model is not None,
+        }
 
     except Exception as e:
         logger.error(f"Error listing models: {e}")

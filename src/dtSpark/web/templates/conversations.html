@@ -226,28 +226,49 @@ async function showNewConversationModal() {
 async function loadModels() {
     try {
         const response = await fetch('/api/models');
-        const models = await response.json();
+        const data = await response.json();
+
+        const models = data.models || data;
+        const modelLocked = data.model_locked || false;
 
         const select = document.getElementById('model-select');
-        select.innerHTML = '<option value="">Select a model...</option>';
 
-        models.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model.id;
+        if (modelLocked) {
+            select.innerHTML = '';
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
+                let displayText = model.name;
+                if (model.provider) {
+                    displayText += ` [${model.provider}]`;
+                }
+                option.textContent = displayText;
+                option.selected = true;
+                select.appendChild(option);
+            });
+            select.disabled = true;
 
-            // Show service provider and optionally model maker
-            let displayText = model.name;
-            if (model.model_maker && model.provider !== model.model_maker) {
-                // Show both: "Model Name [Model Maker via Service Provider]"
-                displayText += ` [${model.model_maker} via ${model.provider}]`;
-            } else {
-                // Show service only: "Model Name [Service Provider]"
-                displayText += ` [${model.provider}]`;
-            }
+            const infoDiv = document.createElement('div');
+            infoDiv.className = 'form-text text-info';
+            infoDiv.innerHTML = '<i class="bi bi-lock-fill"></i> Model is locked via configuration';
+            select.parentNode.appendChild(infoDiv);
+        } else {
+            select.innerHTML = '<option value="">Select a model...</option>';
+            models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.id;
 
-            option.textContent = displayText;
-            select.appendChild(option);
-        });
+                let displayText = model.name;
+                if (model.model_maker && model.provider !== model.model_maker) {
+                    displayText += ` [${model.model_maker} via ${model.provider}]`;
+                } else {
+                    displayText += ` [${model.provider}]`;
+                }
+
+                option.textContent = displayText;
+                select.appendChild(option);
+            });
+        }
 
     } catch (error) {
         document.getElementById('model-select').innerHTML = `
@@ -259,6 +280,13 @@ async function loadModels() {
 // Create conversation
 async function createConversation() {
     const form = document.getElementById('new-conversation-form');
+
+    // Re-enable disabled select so its value is included in form data
+    const modelSelect = document.getElementById('model-select');
+    if (modelSelect.disabled) {
+        modelSelect.disabled = false;
+    }
+
     const formData = new FormData(form);
 
     try {
