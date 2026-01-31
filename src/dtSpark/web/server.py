@@ -9,6 +9,7 @@ import os
 import sys
 import socket
 import logging
+import time
 import webbrowser
 import signal
 import asyncio
@@ -252,6 +253,48 @@ def create_app(
             loop = asyncio.get_running_loop()
             loop.set_exception_handler(_suppress_connection_reset_errors)
 
+    # Set to hold references to background tasks (prevents garbage collection)
+    _background_tasks = set()
+
+    # Browser heartbeat state
+    app.state.last_heartbeat = 0.0
+
+    @app.post("/api/heartbeat")
+    async def heartbeat():
+        """Receive browser heartbeat ping."""
+        app.state.last_heartbeat = time.time()
+        return JSONResponse({"status": "ok"})
+
+    @app.on_event("startup")
+    async def start_heartbeat_monitor():
+        """Start background task to monitor browser heartbeat."""
+        if not heartbeat_enabled:
+            return
+
+        async def _monitor_heartbeat():
+            # Initial grace period - wait for browser to connect and send first heartbeat
+            grace_period = heartbeat_timeout * 2
+            logger.info(
+                f"Browser heartbeat monitor started (interval={heartbeat_interval}s, "
+                f"timeout={heartbeat_timeout}s, grace={grace_period}s)"
+            )
+            await asyncio.sleep(grace_period)
+
+            while True:
+                await asyncio.sleep(heartbeat_interval)
+                last = app.state.last_heartbeat
+                if last > 0 and (time.time() - last) > heartbeat_timeout:
+                    logger.info(
+                        f"No browser heartbeat for {heartbeat_timeout}s - "
+                        f"shutting down (browser likely closed)"
+                    )
+                    os.kill(os.getpid(), signal.SIGTERM)
+                    return
+
+        task = asyncio.create_task(_monitor_heartbeat())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
     # Get template and static directories
     web_dir = Path(__file__).parent
     templates_dir = web_dir / "templates"
@@ -260,11 +303,24 @@ def create_app(
     # Setup templates
     templates = Jinja2Templates(directory=str(templates_dir))
 
+    # Determine feature flags from app instance
+    actions_enabled = getattr(app_instance, 'actions_enabled', False)
+
+    # Read heartbeat configuration
+    from dtPyAppFramework.settings import Settings as _Settings
+    _hb_settings = _Settings()
+    heartbeat_enabled = _hb_settings.get('interface.web.browser_heartbeat.enabled', True)
+    heartbeat_interval = _hb_settings.get('interface.web.browser_heartbeat.interval_seconds', 15)
+    heartbeat_timeout = _hb_settings.get('interface.web.browser_heartbeat.timeout_seconds', 60)
+
     # Add global template variables for app name and version
     templates.env.globals['app_name'] = full_name()
     templates.env.globals['app_version'] = version()
     templates.env.globals['app_description'] = description()
     templates.env.globals['agent_name'] = agent_name()
+    templates.env.globals['actions_enabled'] = actions_enabled
+    templates.env.globals['heartbeat_enabled'] = heartbeat_enabled
+    templates.env.globals['heartbeat_interval_ms'] = heartbeat_interval * 1000
 
     # Mount static files
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -428,13 +484,14 @@ def create_app(
         logger.info("Shutdown request received via API")
         # Send shutdown signal to the process
         # Use a background task to allow the response to be sent first
-        import asyncio
         async def shutdown_server():
             await asyncio.sleep(0.5)  # Give time for response to be sent
             logger.info("Shutting down web server...")
             os.kill(os.getpid(), signal.SIGTERM)
 
-        asyncio.create_task(shutdown_server())
+        task = asyncio.create_task(shutdown_server())
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
         return JSONResponse({"status": "shutdown initiated"})
 
     @app.get("/menu", response_class=HTMLResponse)
@@ -456,13 +513,14 @@ def create_app(
         chat_router,
         streaming_router,
     )
-    from .endpoints.autonomous_actions import router as autonomous_actions_router
-
     app.include_router(main_menu_router, prefix="/api", tags=["Main Menu"])
     app.include_router(conversations_router, prefix="/api", tags=["Conversations"])
     app.include_router(chat_router, prefix="/api", tags=["Chat"])
     app.include_router(streaming_router, prefix="/api", tags=["Streaming"])
-    app.include_router(autonomous_actions_router, prefix="/api", tags=["Autonomous Actions"])
+
+    if actions_enabled:
+        from .endpoints.autonomous_actions import router as autonomous_actions_router
+        app.include_router(autonomous_actions_router, prefix="/api", tags=["Autonomous Actions"])
 
     # Add template routes for conversations and chat
     @app.get("/conversations", response_class=HTMLResponse)
@@ -515,6 +573,8 @@ def create_app(
     @app.get("/actions", response_class=HTMLResponse)
     async def actions_page(request: Request, session_id: str = Depends(get_session)):
         """Display autonomous actions management page."""
+        if not actions_enabled:
+            return RedirectResponse(url="/menu", status_code=303)
         return templates.TemplateResponse(
             "actions.html",
             {

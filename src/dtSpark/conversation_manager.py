@@ -22,6 +22,13 @@ from dtSpark.database.tool_permissions import PERMISSION_ALLOWED, PERMISSION_DEN
 from dtSpark.llm.context_limits import ContextLimitResolver
 from dtSpark.core.context_compaction import ContextCompactor, get_provider_from_model_id
 
+# String constants to avoid duplication
+_ERR_NO_ACTIVE_CONVERSATION = "No active conversation. Create or load a conversation first."
+_TOOL_RESULTS_MARKER = '[TOOL_RESULTS]'
+_SUMMARY_MARKER = '[Summary of previous conversation]'
+_ERR_NO_CONVERSATION_TO_EXPORT = "No conversation loaded to export"
+_LABEL_TOKEN_COUNT = 'Token Count'
+
 
 class ConversationManager:
     """Manages conversation state and automatic rollup for token management."""
@@ -254,7 +261,7 @@ class ConversationManager:
             Message ID
         """
         if not self.current_conversation_id:
-            raise ValueError("No active conversation. Create or load a conversation first.")
+            raise ValueError(_ERR_NO_ACTIVE_CONVERSATION)
 
         token_count = self.bedrock_service.count_tokens(content)
         message_id = self.database.add_message(
@@ -282,7 +289,7 @@ class ConversationManager:
             Message ID
         """
         if not self.current_conversation_id:
-            raise ValueError("No active conversation. Create or load a conversation first.")
+            raise ValueError(_ERR_NO_ACTIVE_CONVERSATION)
 
         token_count = self.bedrock_service.count_tokens(content)
         message_id = self.database.add_message(
@@ -334,10 +341,10 @@ class ConversationManager:
                 except json.JSONDecodeError:
                     pass  # Not JSON, treat as regular message
 
-            if msg['role'] == 'user' and content.startswith('[TOOL_RESULTS]'):
+            if msg['role'] == 'user' and content.startswith(_TOOL_RESULTS_MARKER):
                 # This is a tool results message
                 try:
-                    tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+                    tool_results_json = content.replace(_TOOL_RESULTS_MARKER, '', 1)
                     tool_results = json.loads(tool_results_json)
                     formatted_messages.append({
                         'role': 'user',
@@ -477,7 +484,7 @@ class ConversationManager:
                         pass
 
                 # Check if it's a rollup summary
-                if content.startswith('[Summary of previous conversation]'):
+                if content.startswith(_SUMMARY_MARKER):
                     return content
 
                 # Regular assistant message
@@ -575,7 +582,7 @@ class ConversationManager:
         while cutoff_index > 0:
             cutoff_msg = messages[cutoff_index] if cutoff_index < len(messages) else None
 
-            if cutoff_msg and cutoff_msg['content'].startswith('[TOOL_RESULTS]'):
+            if cutoff_msg and cutoff_msg['content'].startswith(_TOOL_RESULTS_MARKER):
                 # This is a tool_result message, we need to keep the preceding tool_use
                 # Move cutoff back one more message
                 cutoff_index -= 1
@@ -595,7 +602,7 @@ class ConversationManager:
                         # Move cutoff back to include this tool_use and its result
                         cutoff_index -= 1
                         messages_to_keep_count += 1
-                except:
+                except (json.JSONDecodeError, ValueError):
                     pass
 
         messages_to_summarise = messages[:cutoff_index] if cutoff_index > 0 else []
@@ -621,7 +628,7 @@ class ConversationManager:
         self.database.add_message(
             self.current_conversation_id,
             'user',
-            f"[Summary of previous conversation]\n{summary_content}",
+            f"{_SUMMARY_MARKER}\n{summary_content}",
             summary_token_count
         )
 
@@ -782,13 +789,13 @@ class ConversationManager:
             import re
 
             # Remove [TOOL_RESULTS] prefix if present
-            if content.startswith('[TOOL_RESULTS]'):
-                content = content[len('[TOOL_RESULTS]'):].strip()
+            if content.startswith(_TOOL_RESULTS_MARKER):
+                content = content[len(_TOOL_RESULTS_MARKER):].strip()
 
             # Try to parse as JSON
             try:
                 data = json.loads(content)
-            except:
+            except (json.JSONDecodeError, ValueError):
                 # Not JSON, try to extract numbers from text
                 data = None
 
@@ -861,7 +868,7 @@ class ConversationManager:
             content = msg['content']
 
             # Parse and clean tool-related content for better summarization
-            if content.startswith('[TOOL_RESULTS]'):
+            if content.startswith(_TOOL_RESULTS_MARKER):
                 # Extract numerical data from tool results
                 numerical_summary = self._extract_numerical_data(content)
                 if numerical_summary:
@@ -887,7 +894,7 @@ class ConversationManager:
                         conversation_text.append(f"{role}: {' '.join(text_parts)}")
                     if tool_parts:
                         conversation_text.append(f"{role}: [Called tools: {', '.join(tool_parts)}]")
-                except:
+                except (json.JSONDecodeError, ValueError):
                     # If parsing fails, include content as-is
                     conversation_text.append(f"{role}: {content}")
             else:
@@ -1506,7 +1513,7 @@ Current date and time: {datetime_str}"""
             Assistant's response content or None on failure
         """
         if not self.current_conversation_id:
-            raise ValueError("No active conversation. Create or load a conversation first.")
+            raise ValueError(_ERR_NO_ACTIVE_CONVERSATION)
 
         logging.debug(f"send_message called with: {user_message[:50]}...")
 
@@ -1898,7 +1905,7 @@ Current date and time: {datetime_str}"""
 
                 # Add tool results as a user message
                 tool_results_json = json.dumps(tool_results)
-                self.add_user_message(f"[TOOL_RESULTS]{tool_results_json}")
+                self.add_user_message(f"{_TOOL_RESULTS_MARKER}{tool_results_json}")
 
                 # Continue loop to get model's next response
                 continue
@@ -2339,7 +2346,7 @@ Current date and time: {datetime_str}"""
             Markdown-formatted string of the conversation
         """
         if not self.current_conversation_id:
-            logging.warning("No conversation loaded to export")
+            logging.warning(_ERR_NO_CONVERSATION_TO_EXPORT)
             return ""
 
         # Get conversation info
@@ -2389,8 +2396,8 @@ Current date and time: {datetime_str}"""
             content = msg['content']
 
             # Detect special message types
-            is_rollup_summary = content.startswith('[Summary of previous conversation]')
-            is_tool_result = content.startswith('[TOOL_RESULTS]')
+            is_rollup_summary = content.startswith(_SUMMARY_MARKER)
+            is_tool_result = content.startswith(_TOOL_RESULTS_MARKER)
 
             # Check if this is a tool call message (assistant with tool_use blocks)
             is_tool_call = False
@@ -2399,7 +2406,7 @@ Current date and time: {datetime_str}"""
                     content_blocks = json.loads(content)
                     if isinstance(content_blocks, list) and any(block.get('type') == 'tool_use' for block in content_blocks):
                         is_tool_call = True
-                except:
+                except (json.JSONDecodeError, ValueError):
                     pass
 
             # Format role header based on message type
@@ -2420,10 +2427,10 @@ Current date and time: {datetime_str}"""
             md_lines.append("")
 
             # Clean up content if it's tool-related
-            if content.startswith('[TOOL_RESULTS]') and include_tools:
+            if content.startswith(_TOOL_RESULTS_MARKER) and include_tools:
                 # Parse and format tool results
                 try:
-                    tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+                    tool_results_json = content.replace(_TOOL_RESULTS_MARKER, '', 1)
                     tool_results = json.loads(tool_results_json)
                     md_lines.append("**Tool Results:**")
                     md_lines.append("")
@@ -2431,10 +2438,10 @@ Current date and time: {datetime_str}"""
                         md_lines.append(f"- Tool: `{result.get('tool_use_id', 'unknown')}`")
                         md_lines.append(f"  Result: {result.get('content', '')}")
                     md_lines.append("")
-                except:
+                except (json.JSONDecodeError, ValueError):
                     md_lines.append(content)
                     md_lines.append("")
-            elif content.startswith('[TOOL_RESULTS]') and not include_tools:
+            elif content.startswith(_TOOL_RESULTS_MARKER) and not include_tools:
                 # Skip tool results if not including tools
                 md_lines.append("*[Tool execution details omitted]*")
                 md_lines.append("")
@@ -2450,7 +2457,7 @@ Current date and time: {datetime_str}"""
                             md_lines.append(f"**Tool Call:** `{block.get('name')}`")
                             md_lines.append(f"**Input:** {json.dumps(block.get('input', {}), indent=2)}")
                             md_lines.append("")
-                except:
+                except (json.JSONDecodeError, ValueError):
                     md_lines.append(content)
                     md_lines.append("")
             else:
@@ -2574,7 +2581,7 @@ Current date and time: {datetime_str}"""
             True if successful, False otherwise
         """
         if not self.current_conversation_id:
-            logging.warning("No conversation loaded to export")
+            logging.warning(_ERR_NO_CONVERSATION_TO_EXPORT)
             return False
 
         try:
@@ -2814,8 +2821,8 @@ Current date and time: {datetime_str}"""
                 content = msg['content']
 
                 # Detect special message types
-                is_rollup_summary = content.startswith('[Summary of previous conversation]')
-                is_tool_result = content.startswith('[TOOL_RESULTS]')
+                is_rollup_summary = content.startswith(_SUMMARY_MARKER)
+                is_tool_result = content.startswith(_TOOL_RESULTS_MARKER)
 
                 # Check if this is a tool call message (assistant with tool_use blocks)
                 is_tool_call = False
@@ -2824,7 +2831,7 @@ Current date and time: {datetime_str}"""
                         content_blocks = json.loads(content)
                         if isinstance(content_blocks, list) and any(block.get('type') == 'tool_use' for block in content_blocks):
                             is_tool_call = True
-                    except:
+                    except (json.JSONDecodeError, ValueError):
                         pass
 
                 # Assign message class and labels based on type
@@ -2854,9 +2861,9 @@ Current date and time: {datetime_str}"""
 ''')
 
                 # Process content
-                if content.startswith('[TOOL_RESULTS]') and include_tools:
+                if content.startswith(_TOOL_RESULTS_MARKER) and include_tools:
                     try:
-                        tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+                        tool_results_json = content.replace(_TOOL_RESULTS_MARKER, '', 1)
                         tool_results = json.loads(tool_results_json)
                         html_parts.append('''                        <div class="tool-section">
                             <div class="tool-title">🔧 Tool Results:</div>
@@ -2874,10 +2881,10 @@ Current date and time: {datetime_str}"""
 ''')
                         html_parts.append('''                        </div>
 ''')
-                    except:
+                    except (json.JSONDecodeError, ValueError):
                         html_parts.append(f'''                        {content.replace('<', '&lt;').replace('>', '&gt;')}
 ''')
-                elif content.startswith('[TOOL_RESULTS]') and not include_tools:
+                elif content.startswith(_TOOL_RESULTS_MARKER) and not include_tools:
                     html_parts.append('''                        <em>[Tool execution details omitted]</em>
 ''')
                 elif content.startswith('['):
@@ -2893,7 +2900,7 @@ Current date and time: {datetime_str}"""
                             <pre>{json.dumps(block.get('input', {}), indent=2)}</pre>
                         </div>
 ''')
-                    except:
+                    except (json.JSONDecodeError, ValueError):
                         html_parts.append(f'''                        {content.replace('<', '&lt;').replace('>', '&gt;')}
 ''')
                 else:
@@ -2936,7 +2943,7 @@ Current date and time: {datetime_str}"""
             True if successful, False otherwise
         """
         if not self.current_conversation_id:
-            logging.warning("No conversation loaded to export")
+            logging.warning(_ERR_NO_CONVERSATION_TO_EXPORT)
             return False
 
         try:
@@ -2951,7 +2958,7 @@ Current date and time: {datetime_str}"""
             messages = self.get_conversation_history(include_rolled_up=True)
 
             with open(file_path, 'w', newline='', encoding='utf-8') as csvfile:
-                fieldnames = ['Timestamp', 'Type', 'Role', 'Content', 'Token Count']
+                fieldnames = ['Timestamp', 'Type', 'Role', 'Content', _LABEL_TOKEN_COUNT]
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
 
                 # Write header
@@ -2963,21 +2970,21 @@ Current date and time: {datetime_str}"""
                     'Type': '',
                     'Role': 'Conversation',
                     'Content': conv_info['name'],
-                    'Token Count': ''
+                    _LABEL_TOKEN_COUNT: ''
                 })
                 writer.writerow({
                     'Timestamp': 'METADATA',
                     'Type': '',
                     'Role': 'Model',
                     'Content': conv_info['model_id'],
-                    'Token Count': ''
+                    _LABEL_TOKEN_COUNT: ''
                 })
                 writer.writerow({
                     'Timestamp': 'METADATA',
                     'Type': '',
                     'Role': 'Total Tokens',
                     'Content': str(conv_info['total_tokens']),
-                    'Token Count': ''
+                    _LABEL_TOKEN_COUNT: ''
                 })
 
                 # Write messages
@@ -2987,8 +2994,8 @@ Current date and time: {datetime_str}"""
                     content = msg['content']
 
                     # Detect special message types
-                    is_rollup_summary = content.startswith('[Summary of previous conversation]')
-                    is_tool_result = content.startswith('[TOOL_RESULTS]')
+                    is_rollup_summary = content.startswith(_SUMMARY_MARKER)
+                    is_tool_result = content.startswith(_TOOL_RESULTS_MARKER)
 
                     # Check if this is a tool call message
                     is_tool_call = False
@@ -2997,7 +3004,7 @@ Current date and time: {datetime_str}"""
                             content_blocks = json.loads(content)
                             if isinstance(content_blocks, list) and any(block.get('type') == 'tool_use' for block in content_blocks):
                                 is_tool_call = True
-                        except:
+                        except (json.JSONDecodeError, ValueError):
                             pass
 
                     # Assign type label
@@ -3011,13 +3018,13 @@ Current date and time: {datetime_str}"""
                         msg_type = 'Message'
 
                     # Process tool-related content
-                    if content.startswith('[TOOL_RESULTS]'):
+                    if content.startswith(_TOOL_RESULTS_MARKER):
                         if include_tools:
                             try:
-                                tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+                                tool_results_json = content.replace(_TOOL_RESULTS_MARKER, '', 1)
                                 tool_results = json.loads(tool_results_json)
                                 content = f"Tool Results: {json.dumps(tool_results, indent=2)}"
-                            except:
+                            except (json.JSONDecodeError, ValueError):
                                 pass
                         else:
                             content = "[Tool execution details omitted]"
@@ -3031,7 +3038,7 @@ Current date and time: {datetime_str}"""
                                 elif block.get('type') == 'tool_use' and include_tools:
                                     text_parts.append(f"Tool Call: {block.get('name')} - Input: {json.dumps(block.get('input', {}))}")
                             content = '\n'.join(text_parts) if text_parts else content
-                        except:
+                        except (json.JSONDecodeError, ValueError):
                             pass
 
                     writer.writerow({
@@ -3039,7 +3046,7 @@ Current date and time: {datetime_str}"""
                         'Type': msg_type,
                         'Role': role,
                         'Content': content,
-                        'Token Count': msg.get('token_count', '')
+                        _LABEL_TOKEN_COUNT: msg.get('token_count', '')
                     })
 
             logging.info(f"Exported conversation to CSV: {file_path}")

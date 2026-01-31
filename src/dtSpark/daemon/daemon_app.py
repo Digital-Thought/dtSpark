@@ -190,44 +190,9 @@ class DaemonApplication(AbstractApp):
             logger.info("Waiting for shutdown signal (SIGTERM/SIGINT)...")
             logger.info("=" * 60)
 
-            # Set up signal handlers for graceful shutdown
-            import signal
-
-            def signal_handler(signum, frame):
-                print(f"\nReceived signal {signum}, initiating shutdown...")
-                logger.info(f"Received signal {signum}, initiating shutdown...")
-                self._shutdown_event.set()
-
-            signal.signal(signal.SIGINT, signal_handler)
-            signal.signal(signal.SIGTERM, signal_handler)
-            if sys.platform == 'win32':
-                signal.signal(signal.SIGBREAK, signal_handler)
-
-            # Block until shutdown signal
-            # Use polling with timeout to allow signal processing on Windows
-            # Also check for stop signal file (Windows cross-console shutdown)
-            stop_signal_file = pid_file_path + '.stop'
-
-            while not self._shutdown_event.is_set():
-                try:
-                    # Check for stop signal file (used by 'daemon stop' on Windows)
-                    if os.path.exists(stop_signal_file):
-                        print("\nStop signal file detected, initiating shutdown...")
-                        logger.info("Stop signal file detected, initiating shutdown...")
-                        # Remove the signal file
-                        try:
-                            os.remove(stop_signal_file)
-                        except Exception:
-                            pass
-                        self._shutdown_event.set()
-                        break
-
-                    self._shutdown_event.wait(timeout=1.0)
-                except KeyboardInterrupt:
-                    print("\nKeyboard interrupt received, initiating shutdown...")
-                    logger.info("Keyboard interrupt received, initiating shutdown...")
-                    self._shutdown_event.set()
-                    break
+            # Set up signal handlers and wait for shutdown
+            self._setup_signal_handlers()
+            self._wait_for_shutdown(pid_file_path)
 
             print("Shutdown signal received")
             logger.info("Shutdown signal received")
@@ -244,6 +209,51 @@ class DaemonApplication(AbstractApp):
             self._shutdown()
 
         return 0
+
+    def _setup_signal_handlers(self):
+        """Register OS signal handlers for graceful shutdown."""
+        import signal
+
+        def signal_handler(signum, frame):
+            print(f"\nReceived signal {signum}, initiating shutdown...")
+            logger.info(f"Received signal {signum}, initiating shutdown...")
+            self._shutdown_event.set()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        if sys.platform == 'win32':
+            signal.signal(signal.SIGBREAK, signal_handler)
+
+    def _wait_for_shutdown(self, pid_file_path: str):
+        """
+        Block until a shutdown signal is received.
+
+        Polls for stop signal file (Windows cross-console shutdown) and
+        handles keyboard interrupts.
+
+        Args:
+            pid_file_path: Path to the PID file (used to derive stop signal file path)
+        """
+        stop_signal_file = pid_file_path + '.stop'
+
+        while not self._shutdown_event.is_set():
+            try:
+                if os.path.exists(stop_signal_file):
+                    print("\nStop signal file detected, initiating shutdown...")
+                    logger.info("Stop signal file detected, initiating shutdown...")
+                    try:
+                        os.remove(stop_signal_file)
+                    except Exception:
+                        pass
+                    self._shutdown_event.set()
+                    break
+
+                self._shutdown_event.wait(timeout=1.0)
+            except KeyboardInterrupt:
+                print("\nKeyboard interrupt received, initiating shutdown...")
+                logger.info("Keyboard interrupt received, initiating shutdown...")
+                self._shutdown_event.set()
+                break
 
     def _initialise_components(self):
         """Initialise database, LLM manager, and scheduler components."""
@@ -288,83 +298,9 @@ class DaemonApplication(AbstractApp):
 
     def _configure_llm_providers(self):
         """Configure LLM providers based on settings."""
-        # AWS Bedrock
-        aws_enabled = self._get_nested_setting('llm_providers.aws_bedrock.enabled', True)
-        if aws_enabled:
-            try:
-                from dtSpark.llm import BedrockService
-                from dtSpark.aws.authenticator import AWSAuthenticator
-
-                aws_region = self._get_nested_setting('llm_providers.aws_bedrock.region', 'us-east-1')
-                aws_profile = self._get_nested_setting('llm_providers.aws_bedrock.sso_profile', 'default')
-                request_timeout = self.settings.get('bedrock.request_timeout', 300)
-
-                # Check for API key authentication
-                aws_access_key_id = self._get_nested_setting('llm_providers.aws_bedrock.access_key_id', None)
-                aws_secret_access_key = self._get_nested_setting('llm_providers.aws_bedrock.secret_access_key', None)
-
-                authenticator = AWSAuthenticator(
-                    region=aws_region,
-                    sso_profile=aws_profile,
-                    access_key_id=aws_access_key_id,
-                    secret_access_key=aws_secret_access_key
-                )
-
-                if authenticator.authenticate():
-                    bedrock_service = BedrockService(
-                        session=authenticator.session,
-                        region=aws_region,
-                        request_timeout=request_timeout
-                    )
-                    self.llm_manager.register_provider(bedrock_service)
-                    logger.info("AWS Bedrock provider configured")
-
-            except Exception as e:
-                logger.warning(f"Failed to configure AWS Bedrock: {e}")
-
-        # Anthropic Direct
-        anthropic_enabled = self._get_nested_setting('llm_providers.anthropic.enabled', False)
-        logger.debug(f"Anthropic Direct enabled: {anthropic_enabled}")
-        if anthropic_enabled:
-            try:
-                from dtSpark.llm import AnthropicService
-
-                api_key = self._get_nested_setting('llm_providers.anthropic.api_key', None)
-                max_tokens = self.settings.get('bedrock.max_tokens', 8192)
-
-                # Log whether API key was found (don't log the actual key)
-                if api_key:
-                    logger.info(f"Anthropic API key found (starts with: {api_key[:10] if len(api_key) > 10 else 'SHORT'}...)")
-                else:
-                    logger.warning("Anthropic API key not found in settings")
-
-                anthropic_service = AnthropicService(
-                    api_key=api_key,
-                    default_max_tokens=max_tokens
-                )
-                self.llm_manager.register_provider(anthropic_service)
-                print(f"  - Anthropic Direct provider configured")
-                logger.info("Anthropic Direct provider configured")
-
-            except Exception as e:
-                print(f"  - Warning: Failed to configure Anthropic Direct: {e}")
-                logger.warning(f"Failed to configure Anthropic Direct: {e}")
-
-        # Ollama
-        ollama_enabled = self._get_nested_setting('llm_providers.ollama.enabled', False)
-        if ollama_enabled:
-            try:
-                from dtSpark.llm import OllamaService
-
-                base_url = self._get_nested_setting('llm_providers.ollama.base_url', 'http://localhost:11434')
-                verify_ssl = self._get_nested_setting('llm_providers.ollama.verify_ssl', True)
-
-                ollama_service = OllamaService(base_url=base_url, verify_ssl=verify_ssl)
-                self.llm_manager.register_provider(ollama_service)
-                logger.info("Ollama provider configured")
-
-            except Exception as e:
-                logger.warning(f"Failed to configure Ollama: {e}")
+        self._configure_aws_bedrock()
+        self._configure_anthropic_direct()
+        self._configure_ollama()
 
         # Log summary of configured providers
         providers = list(self.llm_manager.providers.keys())
@@ -374,6 +310,92 @@ class DaemonApplication(AbstractApp):
         else:
             print("  - Warning: No LLM providers configured!")
             logger.warning("No LLM providers configured - actions will fail to execute")
+
+    def _configure_aws_bedrock(self):
+        """Configure AWS Bedrock LLM provider if enabled."""
+        aws_enabled = self._get_nested_setting('llm_providers.aws_bedrock.enabled', True)
+        if not aws_enabled:
+            return
+
+        try:
+            from dtSpark.llm import BedrockService
+            from dtSpark.aws.authenticator import AWSAuthenticator
+
+            aws_region = self._get_nested_setting('llm_providers.aws_bedrock.region', 'us-east-1')
+            aws_profile = self._get_nested_setting('llm_providers.aws_bedrock.sso_profile', 'default')
+            request_timeout = self.settings.get('bedrock.request_timeout', 300)
+
+            aws_access_key_id = self._get_nested_setting('llm_providers.aws_bedrock.access_key_id', None)
+            aws_secret_access_key = self._get_nested_setting('llm_providers.aws_bedrock.secret_access_key', None)
+
+            authenticator = AWSAuthenticator(
+                region=aws_region,
+                sso_profile=aws_profile,
+                access_key_id=aws_access_key_id,
+                secret_access_key=aws_secret_access_key
+            )
+
+            if authenticator.authenticate():
+                bedrock_service = BedrockService(
+                    session=authenticator.session,
+                    region=aws_region,
+                    request_timeout=request_timeout
+                )
+                self.llm_manager.register_provider(bedrock_service)
+                logger.info("AWS Bedrock provider configured")
+
+        except Exception as e:
+            logger.warning(f"Failed to configure AWS Bedrock: {e}")
+
+    def _configure_anthropic_direct(self):
+        """Configure Anthropic Direct LLM provider if enabled."""
+        anthropic_enabled = self._get_nested_setting('llm_providers.anthropic.enabled', False)
+        logger.debug(f"Anthropic Direct enabled: {anthropic_enabled}")
+        if not anthropic_enabled:
+            return
+
+        try:
+            from dtSpark.llm import AnthropicService
+
+            api_key = self._get_nested_setting('llm_providers.anthropic.api_key', None)
+            max_tokens = self.settings.get('bedrock.max_tokens', 8192)
+
+            if api_key:
+                key_prefix = api_key[:10] if len(api_key) > 10 else 'SHORT'
+                logger.info("Anthropic API key found (starts with: %s...)", key_prefix)
+            else:
+                logger.warning("Anthropic API key not found in settings")
+
+            anthropic_service = AnthropicService(
+                api_key=api_key,
+                default_max_tokens=max_tokens
+            )
+            self.llm_manager.register_provider(anthropic_service)
+            print("  - Anthropic Direct provider configured")
+            logger.info("Anthropic Direct provider configured")
+
+        except Exception as e:
+            print(f"  - Warning: Failed to configure Anthropic Direct: {e}")
+            logger.warning(f"Failed to configure Anthropic Direct: {e}")
+
+    def _configure_ollama(self):
+        """Configure Ollama LLM provider if enabled."""
+        ollama_enabled = self._get_nested_setting('llm_providers.ollama.enabled', False)
+        if not ollama_enabled:
+            return
+
+        try:
+            from dtSpark.llm import OllamaService
+
+            base_url = self._get_nested_setting('llm_providers.ollama.base_url', 'http://localhost:11434')
+            verify_ssl = self._get_nested_setting('llm_providers.ollama.verify_ssl', True)
+
+            ollama_service = OllamaService(base_url=base_url, verify_ssl=verify_ssl)
+            self.llm_manager.register_provider(ollama_service)
+            logger.info("Ollama provider configured")
+
+        except Exception as e:
+            logger.warning(f"Failed to configure Ollama: {e}")
 
     def _initialise_mcp(self):
         """Initialise MCP manager if enabled."""

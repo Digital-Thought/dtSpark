@@ -166,28 +166,28 @@
 </div>
 
 <!-- Tab Navigation -->
-<ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
-    <li class="nav-item" role="presentation">
+<div class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+    <div class="nav-item">
         <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
             <i class="bi bi-speedometer2"></i> Overview
         </button>
-    </li>
-    <li class="nav-item" role="presentation">
+    </div>
+    <div class="nav-item">
         <button class="nav-link" id="llms-tab" data-bs-toggle="tab" data-bs-target="#llms" type="button" role="tab">
             <i class="bi bi-cpu"></i> LLMs
         </button>
-    </li>
-    <li class="nav-item" role="presentation">
+    </div>
+    <div class="nav-item">
         <button class="nav-link" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations" type="button" role="tab">
             <i class="bi bi-plug"></i> Integrations
         </button>
-    </li>
-    <li class="nav-item" role="presentation">
+    </div>
+    <div class="nav-item">
         <button class="nav-link" id="system-tab" data-bs-toggle="tab" data-bs-target="#system" type="button" role="tab">
             <i class="bi bi-gear"></i> System
         </button>
-    </li>
-</ul>
+    </div>
+</div>
 
 <!-- Tab Content -->
 <div class="tab-content" id="mainTabContent">
@@ -202,7 +202,7 @@
                         <h5 class="card-title mb-3"><i class="bi bi-cpu"></i> LLM Providers</h5>
                         <div id="llm-providers-overview" class="d-flex justify-content-around flex-wrap gap-2">
                             <div class="text-center py-3">
-                                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                                <output class="spinner-border spinner-border-sm text-primary"></output>
                                 <span class="ms-2">Loading providers...</span>
                             </div>
                         </div>
@@ -258,7 +258,7 @@
         <!-- Provider Selector Icons -->
         <div class="provider-selector" id="provider-selector">
             <div class="text-center py-3 w-100">
-                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <output class="spinner-border spinner-border-sm text-primary"></output>
                 <span class="ms-2">Loading providers...</span>
             </div>
         </div>
@@ -283,7 +283,7 @@
                     </div>
                     <div class="card-body p-0" id="tool-sources-list">
                         <div class="text-center py-4">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            <output class="spinner-border spinner-border-sm text-primary"></output>
                             <span class="ms-2">Loading tools...</span>
                         </div>
                     </div>
@@ -317,7 +317,7 @@
                     </div>
                     <div class="card-body" id="user-identity">
                         <div class="text-center py-3">
-                            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                            <output class="spinner-border spinner-border-sm text-primary"></output>
                             <span class="ms-2">Loading user identity...</span>
                         </div>
                     </div>
@@ -642,7 +642,7 @@ function selectProvider(providerType) {
                 </div>
                 <div class="card-body" id="costs-info">
                     <div class="text-center py-3">
-                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <output class="spinner-border spinner-border-sm text-primary"></output>
                         <span class="ms-2">Loading costs...</span>
                     </div>
                 </div>
@@ -799,7 +799,7 @@ async function selectToolSource(source, event) {
         headerEl.innerHTML = '<i class="bi bi-box-fill"></i> Embedded Tools';
         contentEl.innerHTML = `
             <div class="text-center py-4">
-                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <output class="spinner-border spinner-border-sm text-primary"></output>
                 <span class="ms-2">Loading embedded tools...</span>
             </div>
         `;
@@ -890,7 +890,7 @@ async function selectToolSource(source, event) {
         // Fetch tools from API
         contentEl.innerHTML = `
             <div class="text-center py-4">
-                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <output class="spinner-border spinner-border-sm text-primary"></output>
                 <span class="ms-2">Loading tools...</span>
             </div>
         `;

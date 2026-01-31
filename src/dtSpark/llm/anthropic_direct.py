@@ -190,147 +190,8 @@ class AnthropicService(LLMService):
             }
 
         try:
-            # Use provided max_tokens or fall back to default from config
-            requested_max_tokens = max_tokens if max_tokens != 4096 else self.default_max_tokens
-
-            # Get model's max output tokens to ensure we don't exceed it
-            model_max_output = self.get_model_max_tokens(self.current_model_id)
-
-            # Cap max_tokens to model's limit
-            actual_max_tokens = min(requested_max_tokens, model_max_output)
-            if actual_max_tokens < requested_max_tokens:
-                logging.info(
-                    f"Capping max_tokens from {requested_max_tokens} to {actual_max_tokens} "
-                    f"(model {self.current_model_id} limit)"
-                )
-
-            # Convert messages to Anthropic format
-            anthropic_messages = self._convert_messages_to_anthropic(messages)
-
-            # Build API parameters
-            api_params = {
-                'model': self.current_model_id,
-                'messages': anthropic_messages,
-                'max_tokens': actual_max_tokens,
-                'temperature': temperature
-            }
-
-            if system:
-                api_params['system'] = system
-
-            if tools:
-                api_params['tools'] = self._convert_tools_to_anthropic(tools)
-                logging.debug(f"Sending {len(api_params['tools'])} tools to Anthropic API")
-
-            logging.debug(f"Invoking Anthropic model: {self.current_model_id}")
-            logging.debug(f"API params (excluding messages): {{'model': api_params['model'], 'max_tokens': api_params['max_tokens'], 'temperature': api_params['temperature'], 'has_system': 'system' in api_params, 'has_tools': 'tools' in api_params, 'num_tools': len(api_params.get('tools', []))}}")
-
-            # Use streaming to avoid 10-minute timeout
-            # Accumulate response from stream
-            text_parts = []
-            content_blocks = []
-            tool_use_blocks = []
-            stop_reason = None
-            usage_info = {'input_tokens': 0, 'output_tokens': 0}
-
-            # Implement rate limit handling with exponential backoff
-            for retry_attempt in range(self.rate_limit_max_retries):
-                try:
-                    with self.client.messages.stream(**api_params) as stream:
-                        for event in stream:
-                            # Handle different event types
-                            if hasattr(event, 'type'):
-                                if event.type == 'content_block_start':
-                                    # Track content blocks as they start
-                                    pass
-                                elif event.type == 'content_block_delta':
-                                    # Accumulate text deltas
-                                    if hasattr(event, 'delta'):
-                                        if hasattr(event.delta, 'type'):
-                                            if event.delta.type == 'text_delta':
-                                                text_parts.append(event.delta.text)
-                                elif event.type == 'message_stop':
-                                    # Message complete
-                                    pass
-                                elif event.type == 'message_delta':
-                                    # Update stop reason and usage
-                                    if hasattr(event, 'delta') and hasattr(event.delta, 'stop_reason'):
-                                        stop_reason = event.delta.stop_reason
-                                    if hasattr(event, 'usage'):
-                                        usage_info['output_tokens'] = event.usage.output_tokens
-
-                        # Get final message to extract full content and usage
-                        final_message = stream.get_final_message()
-
-                        # Extract usage information
-                        if hasattr(final_message, 'usage'):
-                            usage_info['input_tokens'] = final_message.usage.input_tokens
-                            usage_info['output_tokens'] = final_message.usage.output_tokens
-
-                        # Extract stop reason
-                        if hasattr(final_message, 'stop_reason'):
-                            stop_reason = final_message.stop_reason
-
-                        # Extract content blocks (including tool use)
-                        if hasattr(final_message, 'content'):
-                            for block in final_message.content:
-                                if hasattr(block, 'type'):
-                                    if block.type == 'text':
-                                        content_blocks.append({
-                                            'type': 'text',
-                                            'text': block.text
-                                        })
-                                    elif block.type == 'tool_use':
-                                        tool_block = {
-                                            'type': 'tool_use',
-                                            'id': block.id,
-                                            'name': block.name,
-                                            'input': block.input
-                                        }
-                                        tool_use_blocks.append(tool_block)
-                                        content_blocks.append(tool_block)
-
-                    # Successfully completed - break out of retry loop
-                    break
-
-                except RateLimitError as e:
-                    # Handle rate limit errors with exponential backoff
-                    if retry_attempt < self.rate_limit_max_retries - 1:
-                        wait_time = self.rate_limit_base_delay ** retry_attempt
-                        logging.warning(
-                            f"Rate limit exceeded (attempt {retry_attempt + 1}/{self.rate_limit_max_retries}). "
-                            f"Waiting {wait_time:.1f} seconds before retrying..."
-                        )
-                        logging.debug(f"Rate limit error details: {str(e)}")
-                        time.sleep(wait_time)
-                    else:
-                        # Final retry failed
-                        logging.error(
-                            f"Rate limit exceeded after {self.rate_limit_max_retries} attempts. "
-                            f"Please reduce request frequency or contact Anthropic for rate limit increase."
-                        )
-                        logging.error(f"Rate limit error details: {str(e)}")
-                        return {
-                            'error': True,
-                            'error_code': 'RateLimitExceeded',
-                            'error_message': f"Rate limit exceeded after {self.rate_limit_max_retries} retry attempts. {str(e)}",
-                            'error_type': 'RateLimitError'
-                        }
-
-            # Build response in standard format
-            response = {
-                'stop_reason': stop_reason,
-                'usage': usage_info,
-                'content_blocks': content_blocks,
-                'content': ''.join(text_parts)
-            }
-
-            # Add tool_use if present
-            if tool_use_blocks:
-                response['tool_use'] = tool_use_blocks
-                response['stop_reason'] = 'tool_use'
-
-            return response
+            api_params = self._build_api_params(messages, max_tokens, temperature, tools, system)
+            return self._execute_streaming_request(api_params)
 
         except Exception as e:
             logging.error(f"Anthropic API error: {e}")
@@ -340,6 +201,250 @@ class AnthropicService(LLMService):
                 'error_message': str(e),
                 'error_type': 'RequestError'
             }
+
+    def _build_api_params(
+        self,
+        messages: List[Dict[str, Any]],
+        max_tokens: int,
+        temperature: float,
+        tools: Optional[List[Dict[str, Any]]],
+        system: Optional[str]
+    ) -> Dict[str, Any]:
+        """
+        Build API parameters for an Anthropic request.
+
+        Handles max_tokens capping, message conversion, and tool conversion.
+
+        Args:
+            messages: Conversation messages
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            tools: Optional tool definitions
+            system: Optional system prompt
+
+        Returns:
+            Dictionary of API parameters ready for the Anthropic client
+        """
+        # Use provided max_tokens or fall back to default from config
+        requested_max_tokens = max_tokens if max_tokens != 4096 else self.default_max_tokens
+
+        # Get model's max output tokens to ensure we don't exceed it
+        model_max_output = self.get_model_max_tokens(self.current_model_id)
+
+        # Cap max_tokens to model's limit
+        actual_max_tokens = min(requested_max_tokens, model_max_output)
+        if actual_max_tokens < requested_max_tokens:
+            logging.info(
+                f"Capping max_tokens from {requested_max_tokens} to {actual_max_tokens} "
+                f"(model {self.current_model_id} limit)"
+            )
+
+        # Convert messages to Anthropic format
+        anthropic_messages = self._convert_messages_to_anthropic(messages)
+
+        # Build API parameters
+        api_params = {
+            'model': self.current_model_id,
+            'messages': anthropic_messages,
+            'max_tokens': actual_max_tokens,
+            'temperature': temperature
+        }
+
+        if system:
+            api_params['system'] = system
+
+        if tools:
+            api_params['tools'] = self._convert_tools_to_anthropic(tools)
+            logging.debug(f"Sending {len(api_params['tools'])} tools to Anthropic API")
+
+        logging.debug(f"Invoking Anthropic model: {self.current_model_id}")
+        self._log_api_params(api_params)
+
+        return api_params
+
+    def _log_api_params(self, api_params: Dict[str, Any]) -> None:
+        """Log API parameters for debugging (excluding message content)."""
+        debug_info = {
+            'model': api_params['model'],
+            'max_tokens': api_params['max_tokens'],
+            'temperature': api_params['temperature'],
+            'has_system': 'system' in api_params,
+            'has_tools': 'tools' in api_params,
+            'num_tools': len(api_params.get('tools', []))
+        }
+        logging.debug("API params (excluding messages): %s", debug_info)
+
+    def _execute_streaming_request(self, api_params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a streaming request with rate limit retry logic.
+
+        Args:
+            api_params: Pre-built API parameters
+
+        Returns:
+            Response dictionary in standard format, or error dictionary
+        """
+        text_parts = []
+        content_blocks = []
+        tool_use_blocks = []
+        stop_reason = None
+        usage_info = {'input_tokens': 0, 'output_tokens': 0}
+
+        for retry_attempt in range(self.rate_limit_max_retries):
+            try:
+                with self.client.messages.stream(**api_params) as stream:
+                    self._process_stream_events(stream, text_parts)
+
+                    final_message = stream.get_final_message()
+                    self._extract_final_message_data(
+                        final_message, usage_info, content_blocks, tool_use_blocks
+                    )
+                    if hasattr(final_message, 'stop_reason'):
+                        stop_reason = final_message.stop_reason
+
+                # Successfully completed - break out of retry loop
+                break
+
+            except RateLimitError as e:
+                error_response = self._handle_rate_limit_error(e, retry_attempt)
+                if error_response is not None:
+                    return error_response
+
+        return self._build_response(text_parts, content_blocks, tool_use_blocks, stop_reason, usage_info)
+
+    def _process_stream_events(
+        self,
+        stream,
+        text_parts: List[str]
+    ) -> None:
+        """
+        Process streaming events, accumulating text deltas.
+
+        Args:
+            stream: The Anthropic streaming response
+            text_parts: List to accumulate text delta strings into
+        """
+        for event in stream:
+            if not hasattr(event, 'type'):
+                continue
+
+            if event.type == 'content_block_delta':
+                self._handle_content_block_delta(event, text_parts)
+
+    def _handle_content_block_delta(self, event, text_parts: List[str]) -> None:
+        """Handle a content_block_delta event by extracting text."""
+        if not hasattr(event, 'delta'):
+            return
+        if not hasattr(event.delta, 'type'):
+            return
+        if event.delta.type == 'text_delta':
+            text_parts.append(event.delta.text)
+
+    def _extract_final_message_data(
+        self,
+        final_message,
+        usage_info: Dict[str, int],
+        content_blocks: List[Dict[str, Any]],
+        tool_use_blocks: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Extract usage, stop reason, and content blocks from the final message.
+
+        Args:
+            final_message: The final message object from the stream
+            usage_info: Dictionary to update with token usage
+            content_blocks: List to append content blocks to
+            tool_use_blocks: List to append tool use blocks to
+        """
+        if hasattr(final_message, 'usage'):
+            usage_info['input_tokens'] = final_message.usage.input_tokens
+            usage_info['output_tokens'] = final_message.usage.output_tokens
+
+        if not hasattr(final_message, 'content'):
+            return
+
+        for block in final_message.content:
+            if not hasattr(block, 'type'):
+                continue
+            if block.type == 'text':
+                content_blocks.append({'type': 'text', 'text': block.text})
+            elif block.type == 'tool_use':
+                tool_block = {
+                    'type': 'tool_use',
+                    'id': block.id,
+                    'name': block.name,
+                    'input': block.input
+                }
+                tool_use_blocks.append(tool_block)
+                content_blocks.append(tool_block)
+
+    def _handle_rate_limit_error(self, error: Exception, retry_attempt: int) -> Optional[Dict[str, Any]]:
+        """
+        Handle a rate limit error with exponential backoff.
+
+        Args:
+            error: The RateLimitError exception
+            retry_attempt: Current retry attempt index (0-based)
+
+        Returns:
+            None if retrying (caller should continue), or an error dict if retries exhausted
+        """
+        if retry_attempt < self.rate_limit_max_retries - 1:
+            wait_time = self.rate_limit_base_delay ** retry_attempt
+            logging.warning(
+                f"Rate limit exceeded (attempt {retry_attempt + 1}/{self.rate_limit_max_retries}). "
+                f"Waiting {wait_time:.1f} seconds before retrying..."
+            )
+            logging.debug(f"Rate limit error details: {str(error)}")
+            time.sleep(wait_time)
+            return None
+
+        # Final retry failed
+        logging.error(
+            f"Rate limit exceeded after {self.rate_limit_max_retries} attempts. "
+            "Please reduce request frequency or contact Anthropic for rate limit increase."
+        )
+        logging.error(f"Rate limit error details: {str(error)}")
+        return {
+            'error': True,
+            'error_code': 'RateLimitExceeded',
+            'error_message': f"Rate limit exceeded after {self.rate_limit_max_retries} retry attempts. {str(error)}",
+            'error_type': 'RateLimitError'
+        }
+
+    def _build_response(
+        self,
+        text_parts: List[str],
+        content_blocks: List[Dict[str, Any]],
+        tool_use_blocks: List[Dict[str, Any]],
+        stop_reason: Optional[str],
+        usage_info: Dict[str, int]
+    ) -> Dict[str, Any]:
+        """
+        Build the standard response dictionary from accumulated stream data.
+
+        Args:
+            text_parts: Accumulated text parts from streaming
+            content_blocks: All content blocks (text and tool use)
+            tool_use_blocks: Tool use blocks specifically
+            stop_reason: The stop reason from the API
+            usage_info: Token usage information
+
+        Returns:
+            Response dictionary in standard format
+        """
+        response = {
+            'stop_reason': stop_reason,
+            'usage': usage_info,
+            'content_blocks': content_blocks,
+            'content': ''.join(text_parts)
+        }
+
+        if tool_use_blocks:
+            response['tool_use'] = tool_use_blocks
+            response['stop_reason'] = 'tool_use'
+
+        return response
 
     def _convert_messages_to_anthropic(
         self,

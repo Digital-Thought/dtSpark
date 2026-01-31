@@ -156,26 +156,55 @@ class ActionChangeMonitor:
             current_ids.add(action_id)
 
             if action_id not in self._known_actions:
-                # New action detected
-                logger.info(f"New action detected: {action['name']} (ID: {action_id})")
-                self._known_actions[action_id] = version
-                if self.on_action_added:
-                    try:
-                        self.on_action_added(action)
-                    except Exception as e:
-                        logger.error(f"Error in on_action_added callback: {e}")
-
+                self._handle_new_action(action, version)
             elif self._known_actions[action_id] != version:
-                # Modified action detected
-                logger.info(f"Action modified: {action['name']} (ID: {action_id}, v{self._known_actions[action_id]} -> v{version})")
-                self._known_actions[action_id] = version
-                if self.on_action_modified:
-                    try:
-                        self.on_action_modified(action)
-                    except Exception as e:
-                        logger.error(f"Error in on_action_modified callback: {e}")
+                self._handle_modified_action(action, version)
 
         # Check for deleted actions
+        self._handle_deleted_actions(current_ids)
+
+    def _handle_new_action(self, action: Dict, version: int) -> None:
+        """
+        Process a newly detected action.
+
+        Args:
+            action: The action dictionary from the database
+            version: The action's version number
+        """
+        action_id = action['id']
+        logger.info(f"New action detected: {action['name']} (ID: {action_id})")
+        self._known_actions[action_id] = version
+        if self.on_action_added:
+            try:
+                self.on_action_added(action)
+            except Exception as e:
+                logger.error(f"Error in on_action_added callback: {e}")
+
+    def _handle_modified_action(self, action: Dict, version: int) -> None:
+        """
+        Process a modified action.
+
+        Args:
+            action: The action dictionary from the database
+            version: The action's new version number
+        """
+        action_id = action['id']
+        old_version = self._known_actions[action_id]
+        logger.info(f"Action modified: {action['name']} (ID: {action_id}, v{old_version} -> v{version})")
+        self._known_actions[action_id] = version
+        if self.on_action_modified:
+            try:
+                self.on_action_modified(action)
+            except Exception as e:
+                logger.error(f"Error in on_action_modified callback: {e}")
+
+    def _handle_deleted_actions(self, current_ids: set) -> None:
+        """
+        Process actions that have been deleted from the database.
+
+        Args:
+            current_ids: Set of action IDs currently present in the database
+        """
         deleted_ids = set(self._known_actions.keys()) - current_ids
         for action_id in deleted_ids:
             logger.info(f"Action deleted: ID {action_id}")

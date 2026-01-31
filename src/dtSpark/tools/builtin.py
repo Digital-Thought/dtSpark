@@ -16,6 +16,22 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from zoneinfo import ZoneInfo, available_timezones
 
+# Common error/description string constants (SonarCloud S1192)
+_ERR_FS_NOT_CONFIGURED = "Filesystem tools not configured"
+_ERR_FILE_PATH_REQUIRED = "File path is required"
+_ERR_DOC_NOT_CONFIGURED = "Document tools not configured"
+_ERR_DOC_NOT_ENABLED = "Document tools are not enabled"
+_ERR_WRITE_MODE_REQUIRED = "Write operations require access_mode: read_write"
+_ERR_OUTPUT_PATH_REQUIRED = "Output file path is required"
+_ERR_ARCHIVE_NOT_CONFIGURED = "Archive tools not configured"
+_ERR_ARCHIVE_NOT_ENABLED = "Archive tools are not enabled"
+_ERR_ARCHIVE_PATH_REQUIRED = "Archive path is required"
+_DESC_ARCHIVE_PATH = "Path to the archive file"
+_TAR_GZ = 'tar.gz'
+_TAR_BZ2 = 'tar.bz2'
+_TAR_BZ2_MODE = 'r:bz2'
+
+
 
 def get_builtin_tools(config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """
@@ -459,7 +475,7 @@ def _execute_list_files_recursive(tool_input: Dict[str, Any],
         Dictionary with success status and file listing
     """
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Filesystem tools not configured"}
+        return {"success": False, "error": _ERR_FS_NOT_CONFIGURED}
 
     fs_config = config.get('embedded_tools', {}).get('filesystem', {})
     allowed_path = fs_config.get('allowed_path', '.')
@@ -539,7 +555,7 @@ def _execute_search_files(tool_input: Dict[str, Any],
         Dictionary with success status and search results
     """
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Filesystem tools not configured"}
+        return {"success": False, "error": _ERR_FS_NOT_CONFIGURED}
 
     fs_config = config.get('embedded_tools', {}).get('filesystem', {})
     allowed_path = fs_config.get('allowed_path', '.')
@@ -609,7 +625,7 @@ def _execute_read_file_text(tool_input: Dict[str, Any],
         Dictionary with success status and file content
     """
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Filesystem tools not configured"}
+        return {"success": False, "error": _ERR_FS_NOT_CONFIGURED}
 
     fs_config = config.get('embedded_tools', {}).get('filesystem', {})
     allowed_path = fs_config.get('allowed_path', '.')
@@ -618,7 +634,7 @@ def _execute_read_file_text(tool_input: Dict[str, Any],
     file_path = tool_input.get('path')
 
     if not file_path:
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     # Validate path
     validation = _validate_path(file_path, allowed_path)
@@ -673,7 +689,7 @@ def _execute_read_file_binary(tool_input: Dict[str, Any],
         Dictionary with success status and base64-encoded content
     """
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Filesystem tools not configured"}
+        return {"success": False, "error": _ERR_FS_NOT_CONFIGURED}
 
     fs_config = config.get('embedded_tools', {}).get('filesystem', {})
     allowed_path = fs_config.get('allowed_path', '.')
@@ -683,7 +699,7 @@ def _execute_read_file_binary(tool_input: Dict[str, Any],
     max_size_mb = tool_input.get('max_size_mb', 10)
 
     if not file_path:
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     # Validate path
     validation = _validate_path(file_path, allowed_path)
@@ -748,7 +764,7 @@ def _execute_write_file(tool_input: Dict[str, Any],
 
     if not config.get('embedded_tools'):
         logging.warning("write_file failed: embedded_tools not in config")
-        return {"success": False, "error": "Filesystem tools not configured"}
+        return {"success": False, "error": _ERR_FS_NOT_CONFIGURED}
 
     fs_config = config.get('embedded_tools', {}).get('filesystem', {})
     allowed_path = fs_config.get('allowed_path', '.')
@@ -773,7 +789,7 @@ def _execute_write_file(tool_input: Dict[str, Any],
 
     if not file_path:
         logging.warning("write_file failed: no file path provided")
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     if content is None:
         logging.warning("write_file failed: no content provided")
@@ -830,7 +846,7 @@ def _execute_create_directories(tool_input: Dict[str, Any],
         Dictionary with success status
     """
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Filesystem tools not configured"}
+        return {"success": False, "error": _ERR_FS_NOT_CONFIGURED}
 
     fs_config = config.get('embedded_tools', {}).get('filesystem', {})
     allowed_path = fs_config.get('allowed_path', '.')
@@ -1145,17 +1161,17 @@ def _execute_get_file_info(tool_input: Dict[str, Any],
                            config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the get_file_info tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     allowed_path = doc_config.get('allowed_path', '.')
     file_path = tool_input.get('path')
 
     if not file_path:
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -1220,11 +1236,11 @@ def _execute_read_word_document(tool_input: Dict[str, Any],
                                 config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the read_word_document tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     allowed_path = doc_config.get('allowed_path', '.')
     max_size_mb = doc_config.get('max_file_size_mb', 50)
@@ -1234,7 +1250,7 @@ def _execute_read_word_document(tool_input: Dict[str, Any],
     include_headers_footers = tool_input.get('include_headers_footers', False)
 
     if not file_path:
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -1307,11 +1323,11 @@ def _execute_read_excel_document(tool_input: Dict[str, Any],
                                  config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the read_excel_document tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     allowed_path = doc_config.get('allowed_path', '.')
     max_size_mb = doc_config.get('max_file_size_mb', 50)
@@ -1323,7 +1339,7 @@ def _execute_read_excel_document(tool_input: Dict[str, Any],
     max_rows = tool_input.get('max_rows', 0) or default_max_rows
 
     if not file_path:
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -1395,11 +1411,11 @@ def _execute_read_powerpoint_document(tool_input: Dict[str, Any],
                                       config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the read_powerpoint_document tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     allowed_path = doc_config.get('allowed_path', '.')
     max_size_mb = doc_config.get('max_file_size_mb', 50)
@@ -1408,7 +1424,7 @@ def _execute_read_powerpoint_document(tool_input: Dict[str, Any],
     include_notes = tool_input.get('include_notes', True)
 
     if not file_path:
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -1478,11 +1494,11 @@ def _execute_read_pdf_document(tool_input: Dict[str, Any],
                                config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the read_pdf_document tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     allowed_path = doc_config.get('allowed_path', '.')
     max_size_mb = doc_config.get('max_file_size_mb', 50)
@@ -1493,7 +1509,7 @@ def _execute_read_pdf_document(tool_input: Dict[str, Any],
     include_metadata = tool_input.get('include_metadata', True)
 
     if not file_path:
-        return {"success": False, "error": "File path is required"}
+        return {"success": False, "error": _ERR_FILE_PATH_REQUIRED}
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -1560,14 +1576,14 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                                   config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the create_word_document tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     if doc_config.get('access_mode', 'read') != 'read_write':
-        return {"success": False, "error": "Write operations require access_mode: read_write"}
+        return {"success": False, "error": _ERR_WRITE_MODE_REQUIRED}
 
     allowed_path = doc_config.get('allowed_path', '.')
     templates_path = doc_config.get('creation', {}).get('templates_path')
@@ -1578,7 +1594,7 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
     placeholders = tool_input.get('placeholders', {})
 
     if not file_path:
-        return {"success": False, "error": "Output file path is required"}
+        return {"success": False, "error": _ERR_OUTPUT_PATH_REQUIRED}
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -1680,14 +1696,14 @@ def _execute_create_excel_document(tool_input: Dict[str, Any],
                                    config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the create_excel_document tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     if doc_config.get('access_mode', 'read') != 'read_write':
-        return {"success": False, "error": "Write operations require access_mode: read_write"}
+        return {"success": False, "error": _ERR_WRITE_MODE_REQUIRED}
 
     allowed_path = doc_config.get('allowed_path', '.')
 
@@ -1695,7 +1711,7 @@ def _execute_create_excel_document(tool_input: Dict[str, Any],
     sheets = tool_input.get('sheets', [])
 
     if not file_path:
-        return {"success": False, "error": "Output file path is required"}
+        return {"success": False, "error": _ERR_OUTPUT_PATH_REQUIRED}
 
     if not sheets:
         return {"success": False, "error": "At least one sheet is required"}
@@ -1758,14 +1774,14 @@ def _execute_create_powerpoint_document(tool_input: Dict[str, Any],
                                         config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Execute the create_powerpoint_document tool."""
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Document tools not configured"}
+        return {"success": False, "error": _ERR_DOC_NOT_CONFIGURED}
 
     doc_config = config.get('embedded_tools', {}).get('documents', {})
     if not doc_config.get('enabled', False):
-        return {"success": False, "error": "Document tools are not enabled"}
+        return {"success": False, "error": _ERR_DOC_NOT_ENABLED}
 
     if doc_config.get('access_mode', 'read') != 'read_write':
-        return {"success": False, "error": "Write operations require access_mode: read_write"}
+        return {"success": False, "error": _ERR_WRITE_MODE_REQUIRED}
 
     allowed_path = doc_config.get('allowed_path', '.')
     templates_path = doc_config.get('creation', {}).get('templates_path')
@@ -1776,7 +1792,7 @@ def _execute_create_powerpoint_document(tool_input: Dict[str, Any],
     placeholders = tool_input.get('placeholders', {})
 
     if not file_path:
-        return {"success": False, "error": "Output file path is required"}
+        return {"success": False, "error": _ERR_OUTPUT_PATH_REQUIRED}
 
     if not slides_data and not template_path:
         return {"success": False, "error": "Either slides or template_path is required"}
@@ -1914,7 +1930,7 @@ def _get_archive_tools(archive_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "properties": {
                     "path": {
                         "type": "string",
-                        "description": "Path to the archive file"
+                        "description": _DESC_ARCHIVE_PATH
                     }
                 },
                 "required": ["path"]
@@ -1929,7 +1945,7 @@ def _get_archive_tools(archive_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "properties": {
                     "archive_path": {
                         "type": "string",
-                        "description": "Path to the archive file"
+                        "description": _DESC_ARCHIVE_PATH
                     },
                     "file_path": {
                         "type": "string",
@@ -1963,7 +1979,7 @@ def _get_archive_tools(archive_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "properties": {
                     "archive_path": {
                         "type": "string",
-                        "description": "Path to the archive file"
+                        "description": _DESC_ARCHIVE_PATH
                     },
                     "destination": {
                         "type": "string",
@@ -1997,9 +2013,9 @@ def _get_archive_type(file_path: Path) -> Optional[str]:
     elif suffix == '.tar':
         return 'tar'
     elif name.endswith('.tar.gz') or suffix == '.tgz':
-        return 'tar.gz'
+        return _TAR_GZ
     elif name.endswith('.tar.bz2'):
-        return 'tar.bz2'
+        return _TAR_BZ2
     return None
 
 
@@ -2010,11 +2026,11 @@ def _execute_list_archive_contents(tool_input: Dict[str, Any],
     import tarfile
 
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Archive tools not configured"}
+        return {"success": False, "error": _ERR_ARCHIVE_NOT_CONFIGURED}
 
     archive_config = config.get('embedded_tools', {}).get('archives', {})
     if not archive_config.get('enabled', False):
-        return {"success": False, "error": "Archive tools are not enabled"}
+        return {"success": False, "error": _ERR_ARCHIVE_NOT_ENABLED}
 
     allowed_path = archive_config.get('allowed_path', '.')
     max_size_mb = archive_config.get('max_file_size_mb', 100)
@@ -2023,7 +2039,7 @@ def _execute_list_archive_contents(tool_input: Dict[str, Any],
     file_path = tool_input.get('path')
 
     if not file_path:
-        return {"success": False, "error": "Archive path is required"}
+        return {"success": False, "error": _ERR_ARCHIVE_PATH_REQUIRED}
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -2055,7 +2071,7 @@ def _execute_list_archive_contents(tool_input: Dict[str, Any],
                         "modified": datetime(*info.date_time).isoformat() if info.date_time else None
                     })
         else:
-            mode = 'r:gz' if archive_type == 'tar.gz' else 'r:bz2' if archive_type == 'tar.bz2' else 'r'
+            mode = 'r:gz' if archive_type == _TAR_GZ else _TAR_BZ2_MODE if archive_type == _TAR_BZ2 else 'r'
             with tarfile.open(str(full_path), mode) as tf:
                 count = 0
                 for member in tf:
@@ -2093,11 +2109,11 @@ def _execute_read_archive_file(tool_input: Dict[str, Any],
     import tarfile
 
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Archive tools not configured"}
+        return {"success": False, "error": _ERR_ARCHIVE_NOT_CONFIGURED}
 
     archive_config = config.get('embedded_tools', {}).get('archives', {})
     if not archive_config.get('enabled', False):
-        return {"success": False, "error": "Archive tools are not enabled"}
+        return {"success": False, "error": _ERR_ARCHIVE_NOT_ENABLED}
 
     allowed_path = archive_config.get('allowed_path', '.')
     max_size_mb = archive_config.get('max_file_size_mb', 100)
@@ -2108,7 +2124,7 @@ def _execute_read_archive_file(tool_input: Dict[str, Any],
     as_binary = tool_input.get('as_binary', False)
 
     if not archive_path:
-        return {"success": False, "error": "Archive path is required"}
+        return {"success": False, "error": _ERR_ARCHIVE_PATH_REQUIRED}
 
     if not file_path:
         return {"success": False, "error": "File path within archive is required"}
@@ -2138,7 +2154,7 @@ def _execute_read_archive_file(tool_input: Dict[str, Any],
                     return {"success": False, "error": f"File not found in archive: {file_path}"}
                 content = zf.read(file_path)
         else:
-            mode = 'r:gz' if archive_type == 'tar.gz' else 'r:bz2' if archive_type == 'tar.bz2' else 'r'
+            mode = 'r:gz' if archive_type == _TAR_GZ else _TAR_BZ2_MODE if archive_type == _TAR_BZ2 else 'r'
             with tarfile.open(str(full_path), mode) as tf:
                 try:
                     member = tf.getmember(file_path)
@@ -2195,11 +2211,11 @@ def _execute_extract_archive(tool_input: Dict[str, Any],
     import tarfile
 
     if not config.get('embedded_tools'):
-        return {"success": False, "error": "Archive tools not configured"}
+        return {"success": False, "error": _ERR_ARCHIVE_NOT_CONFIGURED}
 
     archive_config = config.get('embedded_tools', {}).get('archives', {})
     if not archive_config.get('enabled', False):
-        return {"success": False, "error": "Archive tools are not enabled"}
+        return {"success": False, "error": _ERR_ARCHIVE_NOT_ENABLED}
 
     if archive_config.get('access_mode', 'read') != 'read_write':
         return {"success": False, "error": "Extract operations require access_mode: read_write"}
@@ -2213,7 +2229,7 @@ def _execute_extract_archive(tool_input: Dict[str, Any],
     overwrite = tool_input.get('overwrite', False)
 
     if not archive_path:
-        return {"success": False, "error": "Archive path is required"}
+        return {"success": False, "error": _ERR_ARCHIVE_PATH_REQUIRED}
 
     if not destination:
         return {"success": False, "error": "Destination directory is required"}
@@ -2259,7 +2275,7 @@ def _execute_extract_archive(tool_input: Dict[str, Any],
                         zf.extract(member, str(full_dest_path))
                         extracted_files.append(member)
         else:
-            mode = 'r:gz' if archive_type == 'tar.gz' else 'r:bz2' if archive_type == 'tar.bz2' else 'r'
+            mode = 'r:gz' if archive_type == _TAR_GZ else _TAR_BZ2_MODE if archive_type == _TAR_BZ2 else 'r'
             with tarfile.open(str(full_archive_path), mode) as tf:
                 if files_to_extract:
                     members = [tf.getmember(f) for f in files_to_extract if f in tf.getnames()]

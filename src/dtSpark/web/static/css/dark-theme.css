@@ -94,7 +94,8 @@ body {
 }
 
 .chat-message .message-content pre {
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: #0d1117;
+    border: 1px solid #30363d;
     padding: 1rem;
     border-radius: 0.5rem;
     overflow-x: auto;
@@ -195,16 +196,19 @@ body {
 
 /* Code blocks in markdown */
 .markdown-content pre {
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: #0d1117;
+    border: 1px solid #30363d;
     padding: 1rem;
     border-radius: 0.5rem;
     overflow-x: auto;
+    margin: 1rem 0;
 }
 
 .markdown-content code {
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: rgba(110, 118, 129, 0.3);
     padding: 0.2rem 0.4rem;
     border-radius: 0.25rem;
+    font-size: 0.875em;
 }
 
 /* Alerts */
@@ -324,7 +328,7 @@ body {
     border: 1px solid #f44336;
     border-radius: 0.5rem;
     padding: 1rem;
-    color: #ff8a80;
+    color: #ffb4ab;
 }
 
 .mermaid-error .text-danger {
@@ -339,14 +343,6 @@ body {
     padding: 0;
 }
 
-.chat-message .message-content pre {
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    overflow-x: auto;
-}
-
 .chat-message .message-content code:not(.hljs) {
     background-color: rgba(110, 118, 129, 0.3);
     padding: 0.2rem 0.4rem;
@@ -354,27 +350,10 @@ body {
     font-size: 0.875em;
 }
 
-/* Markdown content styling */
-.markdown-content pre {
-    background-color: #0d1117;
-    border: 1px solid #30363d;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    overflow-x: auto;
-    margin: 1rem 0;
-}
-
 .markdown-content pre code {
     background-color: transparent;
     padding: 0;
     border-radius: 0;
-}
-
-.markdown-content code {
-    background-color: rgba(110, 118, 129, 0.3);
-    padding: 0.2rem 0.4rem;
-    border-radius: 0.25rem;
-    font-size: 0.875em;
 }
 
 .markdown-content blockquote {

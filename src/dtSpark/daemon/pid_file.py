@@ -108,8 +108,9 @@ class PIDFile:
             import ctypes
             kernel32 = ctypes.windll.kernel32
 
-            # PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
-            handle = kernel32.OpenProcess(0x1000, False, pid)
+            # Windows constant: PROCESS_QUERY_LIMITED_INFORMATION
+            process_query_limited_information = 0x1000
+            handle = kernel32.OpenProcess(process_query_limited_information, False, pid)
             if handle:
                 kernel32.CloseHandle(handle)
                 return True

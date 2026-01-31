@@ -22,7 +22,7 @@ def main():
         ollama_url = "http://dt-docker01.digital-thought.home:11434"
         ollama_service = OllamaService(base_url=ollama_url)
         manager.register_provider(ollama_service)
-        print(f"   [OK] Connected to Ollama")
+        print("   [OK] Connected to Ollama")
     except Exception as e:
         print(f"   [FAIL] Failed to connect: {e}")
         return
@@ -32,7 +32,7 @@ def main():
     try:
         manager.set_model("llama3.1:latest")
         active_service = manager.get_active_service()
-        print(f"   [OK] Model selected")
+        print("   [OK] Model selected")
         print(f"   Active provider: {manager.get_active_provider()}")
         print(f"   Active service: {type(active_service).__name__}")
     except Exception as e:
@@ -55,7 +55,7 @@ def main():
             text = content[0].get('text', 'No text found')
             print(f"   [OK] Response received: {text[:100]}")
         else:
-            print(f"   [FAIL] No content in response")
+            print("   [FAIL] No content in response")
 
     except Exception as e:
         print(f"   [FAIL] Failed to invoke model: {e}")

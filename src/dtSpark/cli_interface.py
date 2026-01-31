@@ -27,6 +27,17 @@ import time
 import re
 
 
+# Common style and message string constants (SonarCloud S1192)
+_STYLE_BOLD_CYAN = "bold cyan"
+_STYLE_BOLD_YELLOW = "bold yellow"
+_STYLE_BOLD_MAGENTA = "bold magenta"
+_MSG_INVALID_SELECTION = "Invalid selection"
+_MSG_CANCEL_OPTION = "  [0] Cancel"
+_MSG_ENTER_CHOICE = "Enter choice"
+_MSG_INVALID_CHOICE = "Invalid choice"
+_MSG_INVALID_INPUT = "Invalid input"
+
+
 def extract_friendly_model_name(model_id: str) -> str:
     """
     Extract a human-friendly model name from a full model ID or ARN.
@@ -221,6 +232,7 @@ class CLIInterface:
         self.running = True
         self.model_changing_enabled = True  # Can be disabled if model is locked via config
         self.cost_tracking_enabled = False  # Can be enabled via config
+        self.actions_enabled = False  # Can be enabled via autonomous_actions.enabled config
         self._active_status_indicator = None  # Track active status indicator for pause/resume
 
     def print_splash_screen(self, full_name: str, description: str, version: str):
@@ -385,12 +397,13 @@ class CLIInterface:
         choice_map[str(option_num)] = 'list'
         option_num += 1
 
-        # Manage Autonomous Actions
-        menu_content.append("  ", style="")
-        menu_content.append(str(option_num), style="cyan")
-        menu_content.append(". Manage Autonomous Actions\n", style="")
-        choice_map[str(option_num)] = 'autonomous'
-        option_num += 1
+        # Manage Autonomous Actions (only when enabled)
+        if self.actions_enabled:
+            menu_content.append("  ", style="")
+            menu_content.append(str(option_num), style="cyan")
+            menu_content.append(". Manage Autonomous Actions\n", style="")
+            choice_map[str(option_num)] = 'autonomous'
+            option_num += 1
 
         # Quit
         menu_content.append("  ", style="")
@@ -402,7 +415,7 @@ class CLIInterface:
         menu_panel = Panel(
             menu_content,
             title="[bold bright_magenta]MAIN MENU[/bold bright_magenta]",
-            border_style="bold cyan",
+            border_style=_STYLE_BOLD_CYAN,
             box=box.HEAVY,
             padding=(0, 1)
         )
@@ -562,7 +575,7 @@ class CLIInterface:
         """
         # Create table
         table = Table(show_header=False, box=box.ROUNDED, border_style="cyan")
-        table.add_column("No.", style="bold yellow", width=4)
+        table.add_column("No.", style=_STYLE_BOLD_YELLOW, width=4)
         table.add_column("Option", style="white")
 
         for i, option in enumerate(options, 1):
@@ -587,7 +600,7 @@ class CLIInterface:
             elif choice == len(options) + 1:
                 return -1
             else:
-                self.print_error("Invalid selection")
+                self.print_error(_MSG_INVALID_SELECTION)
                 return -1
         except ValueError:
             self.print_error("Please enter a valid number")
@@ -665,11 +678,11 @@ class CLIInterface:
         # Create table
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="cyan"
         )
-        table.add_column("No.", style="bold yellow", width=4)
+        table.add_column("No.", style=_STYLE_BOLD_YELLOW, width=4)
         table.add_column("Model Name", style="cyan")
         table.add_column("Provider", style="green")
         table.add_column("Access Method", style="magenta")
@@ -716,7 +729,7 @@ class CLIInterface:
             if 1 <= choice <= len(models):
                 return models[choice - 1]['id']
             else:
-                self.print_error("Invalid selection")
+                self.print_error(_MSG_INVALID_SELECTION)
                 return None
         except ValueError:
             self.print_error("Please enter a valid number or Q to quit")
@@ -739,11 +752,11 @@ class CLIInterface:
         # Create table
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="cyan"
         )
-        table.add_column("No.", style="bold yellow", width=4)
+        table.add_column("No.", style=_STYLE_BOLD_YELLOW, width=4)
         table.add_column("Name", style="cyan")
         table.add_column("Model", style="green")
         table.add_column("Created", style="blue")
@@ -789,7 +802,7 @@ class CLIInterface:
             if 1 <= choice <= len(conversations):
                 return conversations[choice - 1]['id']
             else:
-                self.print_error("Invalid selection")
+                self.print_error(_MSG_INVALID_SELECTION)
                 return None
         except ValueError:
             self.print_error("Please enter a valid number or 'N' for new conversation")
@@ -847,7 +860,7 @@ class CLIInterface:
         self.console.print()
         self.console.print(Panel(
             "[bold]Conversation History[/bold]",
-            style="bold magenta",
+            style=_STYLE_BOLD_MAGENTA,
             box=box.DOUBLE
         ))
 
@@ -879,7 +892,7 @@ class CLIInterface:
 
         # Create info table
         table = Table(show_header=False, box=None, padding=(0, 2))
-        table.add_column("Label", style="bold cyan")
+        table.add_column("Label", style=_STYLE_BOLD_CYAN)
         table.add_column("Value", style="white")
 
         table.add_row("Conversation", conversation['name'])
@@ -900,12 +913,7 @@ class CLIInterface:
 
         # Add instructions indicator
         if conversation.get('instructions'):
-            if detailed:
-                # In detailed view, show YES and we'll display full instructions below
-                table.add_row("Instructions", "[green]YES[/green]")
-            else:
-                # In regular view, just show YES
-                table.add_row("Instructions", "[green]YES[/green]")
+            table.add_row("Instructions", "[green]YES[/green]")
         else:
             table.add_row("Instructions", "[dim]NO[/dim]")
 
@@ -1104,7 +1112,7 @@ class CLIInterface:
             try:
                 from dtSpark import launch
                 version = launch.version()
-            except:
+            except ImportError:
                 version = "X.X"
 
         # Get log path
@@ -1171,7 +1179,7 @@ class CLIInterface:
         # Create table for server details
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="green"
         )
@@ -1636,7 +1644,7 @@ class CLIInterface:
         # Create table for attached files
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="blue"
         )
@@ -1700,7 +1708,7 @@ class CLIInterface:
         # Create table for transactions
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="yellow"
         )
@@ -1746,7 +1754,7 @@ class CLIInterface:
 
         # Create details table
         details_table = Table(show_header=False, box=None, padding=(0, 2))
-        details_table.add_column("Label", style="bold yellow")
+        details_table.add_column("Label", style=_STYLE_BOLD_YELLOW)
         details_table.add_column("Value", style="white")
 
         timestamp = datetime.fromisoformat(transaction['transaction_timestamp'])
@@ -1781,7 +1789,7 @@ class CLIInterface:
         self.console.print()
         try:
             input_formatted = json.dumps(json.loads(transaction['tool_input']), indent=2)
-        except:
+        except (json.JSONDecodeError, ValueError):
             input_formatted = transaction['tool_input']
 
         self.console.print(Panel(
@@ -1812,7 +1820,7 @@ class CLIInterface:
         """
         # Create stats table
         stats_table = Table(show_header=False, box=None, padding=(0, 2))
-        stats_table.add_column("Metric", style="bold yellow")
+        stats_table.add_column("Metric", style=_STYLE_BOLD_YELLOW)
         stats_table.add_column("Value", style="white")
 
         stats_table.add_row("Total Transactions", f"{stats['total_transactions']:,}")
@@ -1831,7 +1839,7 @@ class CLIInterface:
             self.console.print()
             tools_table = Table(
                 show_header=True,
-                header_style="bold magenta",
+                header_style=_STYLE_BOLD_MAGENTA,
                 box=box.ROUNDED,
                 border_style="green"
             )
@@ -1852,7 +1860,7 @@ class CLIInterface:
             self.console.print()
             conv_table = Table(
                 show_header=True,
-                header_style="bold magenta",
+                header_style=_STYLE_BOLD_MAGENTA,
                 box=box.ROUNDED,
                 border_style="cyan"
             )
@@ -1885,7 +1893,7 @@ class CLIInterface:
 
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="cyan"
         )
@@ -2046,9 +2054,9 @@ class CLIInterface:
         for i, state in enumerate(server_states, 1):
             status = "[green]enabled[/green]" if state['enabled'] else "[red]disabled[/red]"
             self.console.print(f"  [{i}] {state['server_name']} ({status})")
-        self.console.print("  [0] Cancel")
+        self.console.print(_MSG_CANCEL_OPTION)
 
-        choice = self.get_input("Enter choice")
+        choice = self.get_input(_MSG_ENTER_CHOICE)
         try:
             idx = int(choice)
             if idx == 0:
@@ -2056,10 +2064,10 @@ class CLIInterface:
             if 1 <= idx <= len(server_states):
                 return server_states[idx - 1]['server_name']
             else:
-                self.print_error("Invalid choice")
+                self.print_error(_MSG_INVALID_CHOICE)
                 return None
         except ValueError:
-            self.print_error("Invalid input")
+            self.print_error(_MSG_INVALID_INPUT)
             return None
 
     # =========================================================================
@@ -2103,7 +2111,7 @@ class CLIInterface:
         menu_panel = Panel(
             menu_content,
             title="[bold bright_magenta]AUTONOMOUS ACTIONS[/bold bright_magenta]",
-            border_style="bold cyan",
+            border_style=_STYLE_BOLD_CYAN,
             box=box.HEAVY,
             padding=(0, 1)
         )
@@ -2149,7 +2157,7 @@ class CLIInterface:
 
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="cyan"
         )
@@ -2229,7 +2237,7 @@ class CLIInterface:
 
         table = Table(
             show_header=True,
-            header_style="bold magenta",
+            header_style=_STYLE_BOLD_MAGENTA,
             box=box.ROUNDED,
             border_style="cyan"
         )
@@ -2264,7 +2272,7 @@ class CLIInterface:
                         completed = datetime.fromisoformat(completed.replace('Z', '+00:00'))
                     duration = (completed - started).total_seconds()
                     duration_str = f"{duration:.1f}s"
-                except:
+                except (ValueError, TypeError):
                     duration_str = "N/A"
             else:
                 duration_str = "N/A"
@@ -2347,9 +2355,9 @@ class CLIInterface:
         for i, action in enumerate(actions, 1):
             status = "[green]enabled[/green]" if action['is_enabled'] else "[red]disabled[/red]"
             self.console.print(f"  [{i}] {action['name']} ({status})")
-        self.console.print("  [0] Cancel")
+        self.console.print(_MSG_CANCEL_OPTION)
 
-        choice = self.get_input("Enter choice")
+        choice = self.get_input(_MSG_ENTER_CHOICE)
         try:
             idx = int(choice)
             if idx == 0:
@@ -2357,10 +2365,10 @@ class CLIInterface:
             if 1 <= idx <= len(actions):
                 return actions[idx - 1]['id']
             else:
-                self.print_error("Invalid choice")
+                self.print_error(_MSG_INVALID_CHOICE)
                 return None
         except ValueError:
-            self.print_error("Invalid input")
+            self.print_error(_MSG_INVALID_INPUT)
             return None
 
     def select_run(self, runs: List[Dict], prompt: str = "Select a run") -> Optional[int]:
@@ -2383,9 +2391,9 @@ class CLIInterface:
             status = run.get('status', 'unknown')
             started = str(run.get('started_at', ''))[:16]
             self.console.print(f"  [{i}] Run {run['id']} - {status} ({started})")
-        self.console.print("  [0] Cancel")
+        self.console.print(_MSG_CANCEL_OPTION)
 
-        choice = self.get_input("Enter choice")
+        choice = self.get_input(_MSG_ENTER_CHOICE)
         try:
             idx = int(choice)
             if idx == 0:
@@ -2393,10 +2401,10 @@ class CLIInterface:
             if 1 <= idx <= len(runs):
                 return runs[idx - 1]['id']
             else:
-                self.print_error("Invalid choice")
+                self.print_error(_MSG_INVALID_CHOICE)
                 return None
         except ValueError:
-            self.print_error("Invalid input")
+            self.print_error(_MSG_INVALID_INPUT)
             return None
 
     def select_export_format(self) -> Optional[str]:
@@ -2410,9 +2418,9 @@ class CLIInterface:
         self.console.print("  [1] Plain Text")
         self.console.print("  [2] HTML")
         self.console.print("  [3] Markdown")
-        self.console.print("  [0] Cancel")
+        self.console.print(_MSG_CANCEL_OPTION)
 
-        choice = self.get_input("Enter choice")
+        choice = self.get_input(_MSG_ENTER_CHOICE)
         format_map = {'1': 'text', '2': 'html', '3': 'markdown'}
         return format_map.get(choice)
 
@@ -2459,7 +2467,7 @@ class CLIInterface:
             friendly_name = extract_friendly_model_name(model.get('id', ''))
             self.console.print(f"  [{i}] {friendly_name}")
 
-        model_choice = self.get_input("Enter choice")
+        model_choice = self.get_input(_MSG_ENTER_CHOICE)
         try:
             model_idx = int(model_choice) - 1
             if model_idx < 0 or model_idx >= len(available_models):
@@ -2467,7 +2475,7 @@ class CLIInterface:
                 return None
             model_id = available_models[model_idx]['id']
         except ValueError:
-            self.print_error("Invalid input")
+            self.print_error(_MSG_INVALID_INPUT)
             return None
 
         # Step 5: Schedule type
@@ -2475,7 +2483,7 @@ class CLIInterface:
         self.console.print("  [1] One-off (run once at specific time)")
         self.console.print("  [2] Recurring (run on schedule)")
 
-        schedule_choice = self.get_input("Enter choice")
+        schedule_choice = self.get_input(_MSG_ENTER_CHOICE)
         if schedule_choice == '1':
             schedule_type = 'one_off'
             self.console.print("\n[dim]Enter date/time in format: YYYY-MM-DD HH:MM[/dim]")
@@ -2504,7 +2512,7 @@ class CLIInterface:
         self.console.print("  [1] Fresh - Start with clean context each run")
         self.console.print("  [2] Cumulative - Carry context from previous runs")
 
-        context_choice = self.get_input("Enter choice")
+        context_choice = self.get_input(_MSG_ENTER_CHOICE)
         context_mode = 'cumulative' if context_choice == '2' else 'fresh'
 
         # Step 7: Max failures

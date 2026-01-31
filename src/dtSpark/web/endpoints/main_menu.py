@@ -80,56 +80,57 @@ async def get_account_info(
     """
     try:
         app_instance = request.app.state.app_instance
-
-        # Get LLM manager to determine active provider
         llm_manager = getattr(app_instance, 'llm_manager', None)
         user_guid = getattr(app_instance, 'user_guid', 'unknown')
 
         if llm_manager and llm_manager.active_provider:
-            active_provider = llm_manager.active_provider.lower()
+            result = _build_account_info_for_provider(
+                app_instance, llm_manager.active_provider.lower(), user_guid
+            )
+            if result:
+                return result
 
-            # AWS Bedrock
-            if 'bedrock' in active_provider or 'aws' in active_provider:
-                auth = getattr(app_instance, 'authenticator', None)
-                if auth:
-                    account_info = auth.get_account_info()
-                    if account_info:
-                        return AccountInfo(
-                            provider='aws',
-                            user_arn=account_info.get('user_arn'),
-                            account_id=account_info.get('account_id'),
-                            region=account_info.get('region'),
-                            user_guid=user_guid,
-                            auth_method=account_info.get('auth_method'),
-                        )
-
-            # Anthropic
-            elif 'anthropic' in active_provider:
-                return AccountInfo(
-                    provider='anthropic',
-                    user_guid=user_guid,
-                    auth_method='api_key',
-                )
-
-            # Ollama
-            elif 'ollama' in active_provider:
-                return AccountInfo(
-                    provider='ollama',
-                    user_guid=user_guid,
-                    auth_method='local',
-                )
-
-        # No provider configured - return basic info
-        return AccountInfo(
-            provider='none',
-            user_guid=user_guid,
-        )
+        return AccountInfo(provider='none', user_guid=user_guid)
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting account info: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _build_account_info_for_provider(
+    app_instance, active_provider: str, user_guid: str
+) -> Optional[AccountInfo]:
+    """Build AccountInfo for the given active provider, or return None if unavailable."""
+    if 'bedrock' in active_provider or 'aws' in active_provider:
+        return _build_aws_account_info(app_instance, user_guid)
+
+    if 'anthropic' in active_provider:
+        return AccountInfo(provider='anthropic', user_guid=user_guid, auth_method='api_key')
+
+    if 'ollama' in active_provider:
+        return AccountInfo(provider='ollama', user_guid=user_guid, auth_method='local')
+
+    return None
+
+
+def _build_aws_account_info(app_instance, user_guid: str) -> Optional[AccountInfo]:
+    """Build AccountInfo from the AWS authenticator, or return None."""
+    auth = getattr(app_instance, 'authenticator', None)
+    if not auth:
+        return None
+    account_info = auth.get_account_info()
+    if not account_info:
+        return None
+    return AccountInfo(
+        provider='aws',
+        user_arn=account_info.get('user_arn'),
+        account_id=account_info.get('account_id'),
+        region=account_info.get('region'),
+        user_guid=user_guid,
+        auth_method=account_info.get('auth_method'),
+    )
 
 
 @router.get("/providers")
@@ -147,77 +148,99 @@ async def get_providers(
         app_instance = request.app.state.app_instance
         providers = []
 
-        # Get LLM manager which has all registered providers
         llm_manager = getattr(app_instance, 'llm_manager', None)
-
         if llm_manager and hasattr(llm_manager, 'providers'):
             for provider_name, service in llm_manager.providers.items():
-                models = []
-                status = 'connected'
-                provider_type = 'unknown'
-                auth_method = None
-                region = None
-                base_url = None
-
-                # Determine provider type
-                provider_name_lower = provider_name.lower()
-                if 'bedrock' in provider_name_lower or 'aws' in provider_name_lower:
-                    provider_type = 'aws'
-                    auth = getattr(app_instance, 'authenticator', None)
-                    if auth:
-                        account_info = auth.get_account_info()
-                        if account_info:
-                            auth_method = account_info.get('auth_method')
-                            region = account_info.get('region')
-                elif 'anthropic' in provider_name_lower:
-                    provider_type = 'anthropic'
-                    auth_method = 'api_key'
-                elif 'ollama' in provider_name_lower:
-                    provider_type = 'ollama'
-                    auth_method = 'local'
-                    base_url = getattr(service, 'base_url', 'http://localhost:11434')
-
-                # Get available models
-                try:
-                    if hasattr(service, 'list_available_models'):
-                        available_models = service.list_available_models()
-                    elif hasattr(service, 'list_models'):
-                        available_models = service.list_models()
-                    else:
-                        available_models = []
-
-                    for model in available_models:
-                        if isinstance(model, dict):
-                            model_id = model.get('id') or model.get('modelId') or model.get('name') or str(model)
-                            display_name = model.get('display_name') or model.get('modelName') or model_id
-                        else:
-                            model_id = str(model)
-                            display_name = model_id
-
-                        models.append(ProviderModelInfo(
-                            model_id=model_id,
-                            display_name=display_name,
-                        ))
-                except Exception as e:
-                    logger.warning(f"Failed to list models from {provider_name}: {e}")
-                    status = 'error'
-
-                providers.append(ProviderInfo(
-                    name=provider_name,
-                    type=provider_type,
-                    enabled=True,
-                    status=status,
-                    models=models,
-                    auth_method=auth_method,
-                    region=region,
-                    base_url=base_url,
-                ))
+                provider_info = _build_provider_info(app_instance, provider_name, service)
+                providers.append(provider_info)
 
         return providers
 
     except Exception as e:
         logger.error(f"Error getting providers: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _build_provider_info(app_instance, provider_name: str, service) -> ProviderInfo:
+    """Build a ProviderInfo for a single registered provider."""
+    provider_type, auth_method, region, base_url = _detect_provider_type(
+        app_instance, provider_name, service
+    )
+
+    models, status = _list_provider_models(provider_name, service)
+
+    return ProviderInfo(
+        name=provider_name,
+        type=provider_type,
+        enabled=True,
+        status=status,
+        models=models,
+        auth_method=auth_method,
+        region=region,
+        base_url=base_url,
+    )
+
+
+def _detect_provider_type(app_instance, provider_name: str, service) -> tuple:
+    """Detect the provider type, auth method, region, and base URL from the provider name."""
+    provider_name_lower = provider_name.lower()
+    auth_method = None
+    region = None
+    base_url = None
+
+    if 'bedrock' in provider_name_lower or 'aws' in provider_name_lower:
+        provider_type = 'aws'
+        auth = getattr(app_instance, 'authenticator', None)
+        if auth:
+            account_info = auth.get_account_info()
+            if account_info:
+                auth_method = account_info.get('auth_method')
+                region = account_info.get('region')
+    elif 'anthropic' in provider_name_lower:
+        provider_type = 'anthropic'
+        auth_method = 'api_key'
+    elif 'ollama' in provider_name_lower:
+        provider_type = 'ollama'
+        auth_method = 'local'
+        base_url = getattr(service, 'base_url', 'http://localhost:11434')
+    else:
+        provider_type = 'unknown'
+
+    return provider_type, auth_method, region, base_url
+
+
+def _list_provider_models(provider_name: str, service) -> tuple:
+    """List available models from a provider service. Returns (models, status)."""
+    models = []
+    status = 'connected'
+
+    try:
+        if hasattr(service, 'list_available_models'):
+            available_models = service.list_available_models()
+        elif hasattr(service, 'list_models'):
+            available_models = service.list_models()
+        else:
+            available_models = []
+
+        for model in available_models:
+            models.append(_parse_model_info(model))
+    except Exception as e:
+        logger.warning(f"Failed to list models from {provider_name}: {e}")
+        status = 'error'
+
+    return models, status
+
+
+def _parse_model_info(model) -> ProviderModelInfo:
+    """Parse a model entry (dict or string) into a ProviderModelInfo."""
+    if isinstance(model, dict):
+        model_id = model.get('id') or model.get('modelId') or model.get('name') or str(model)
+        display_name = model.get('display_name') or model.get('modelName') or model_id
+    else:
+        model_id = str(model)
+        display_name = model_id
+
+    return ProviderModelInfo(model_id=model_id, display_name=display_name)
 
 
 @router.get("/costs/last-month")
@@ -607,14 +630,18 @@ async def get_daemon_status(request: Request):
         except Exception:
             pass
 
+        if not daemon_running and scheduled_count > 0:
+            warning_message = (
+                f"Daemon is not running - {scheduled_count} scheduled action(s) will not execute"
+            )
+        else:
+            warning_message = None
+
         return {
             'daemon_running': daemon_running,
             'daemon_pid': daemon_pid,
             'scheduled_actions_count': scheduled_count,
-            'warning': None if daemon_running else (
-                f"Daemon is not running - {scheduled_count} scheduled action(s) will not execute"
-                if scheduled_count > 0 else None
-            )
+            'warning': warning_message,
         }
 
     except Exception as e:

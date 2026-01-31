@@ -10,7 +10,7 @@ import os.path
 import socket
 import ipaddress
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Tuple, Optional
 
 from dtPyAppFramework.paths import ApplicationPaths
@@ -72,8 +72,8 @@ def generate_self_signed_certificate(
             .issuer_name(issuer)
             .public_key(private_key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.utcnow())
-            .not_valid_after(datetime.utcnow() + timedelta(days=validity_days))
+            .not_valid_before(datetime.now(timezone.utc))
+            .not_valid_after(datetime.now(timezone.utc) + timedelta(days=validity_days))
             .add_extension(
                 x509.SubjectAlternativeName([
                     x509.DNSName(hostname),

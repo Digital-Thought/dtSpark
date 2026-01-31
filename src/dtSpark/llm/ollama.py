@@ -79,9 +79,11 @@ class OllamaService(LLMService):
             base_url = base_url + '/'
 
         # Create httpx client with SSL verification disabled and proper base URL
+        # SSL verification is intentionally disabled here - controlled by verify_ssl constructor parameter
+        # which is set from user configuration (for self-signed certificates on local Ollama instances)
         custom_http_client = httpx.Client(
             base_url=base_url,
-            verify=False,
+            verify=False,  # NOSONAR - intentional, gated by verify_ssl config
             timeout=httpx.Timeout(timeout=120.0)
         )
 

@@ -76,29 +76,43 @@ def daemon_main():
         time.sleep(2)
         sys.exit(manager.start(args))
     elif command == '--run':
-        # Internal: Actually run the daemon (called by start in background)
-        # Clean up sys.argv - AbstractApp expects program name and valid args
-        sys.argv = ['dtSpark-daemon'] + args
-
-        # Set up error logging to file for background mode debugging
-        error_log_path = './daemon_error.log'
-
-        try:
-            from .daemon_app import DaemonApplication
-            app = DaemonApplication()
-            app.run()
-        except Exception as e:
-            import traceback
-            error_msg = f"Daemon failed to start: {e}\n{traceback.format_exc()}"
-            print(error_msg)
-            # Also write to error log file for background mode
-            try:
-                with open(error_log_path, 'w') as f:
-                    f.write(error_msg)
-            except Exception:
-                pass
-            sys.exit(1)
+        _run_daemon_internal(args)
     else:
         print(f"Unknown command: {command}")
         print("Use: dtSpark daemon {start|stop|status|restart}")
+        sys.exit(1)
+
+
+def _run_daemon_internal(args):
+    """
+    Run the daemon application directly (called by start in background).
+
+    Sets up sys.argv for AbstractApp and handles error logging for
+    background mode debugging.
+
+    Args:
+        args: Additional command-line arguments for the daemon
+    """
+    import sys
+
+    # Clean up sys.argv - AbstractApp expects program name and valid args
+    sys.argv = ['dtSpark-daemon'] + args
+
+    # Set up error logging to file for background mode debugging
+    error_log_path = './daemon_error.log'
+
+    try:
+        from .daemon_app import DaemonApplication
+        app = DaemonApplication()
+        app.run()
+    except Exception as e:
+        import traceback
+        error_msg = f"Daemon failed to start: {e}\n{traceback.format_exc()}"
+        print(error_msg)
+        # Also write to error log file for background mode
+        try:
+            with open(error_log_path, 'w') as f:
+                f.write(error_msg)
+        except Exception:
+            pass
         sys.exit(1)

@@ -12,6 +12,10 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 from botocore.exceptions import ClientError
 
+# Period name constants
+_PERIOD_CURRENT_MONTH = 'Current Month'
+_PERIOD_LAST_MONTH = 'Last Month'
+
 
 class CostTracker:
     """Tracks AWS Bedrock costs using Cost Explorer API."""
@@ -95,14 +99,14 @@ class CostTracker:
             current_month_costs = self._get_costs_for_period(
                 first_day_this_month,
                 today + timedelta(days=1),  # End date is exclusive, so add 1 day to include today
-                'Current Month'
+                _PERIOD_CURRENT_MONTH
             )
 
             # Get last month's costs
             last_month_costs = self._get_costs_for_period(
                 first_day_last_month,
                 first_day_this_month,  # End date is exclusive
-                'Last Month'
+                _PERIOD_LAST_MONTH
             )
 
             # Get last 24 hours costs
@@ -144,7 +148,7 @@ class CostTracker:
                     'Start': start_date.strftime('%Y-%m-%d'),
                     'End': end_date.strftime('%Y-%m-%d')
                 },
-                Granularity='MONTHLY' if period_name in ['Last Month', 'Current Month'] else 'DAILY',
+                Granularity='MONTHLY' if period_name in [_PERIOD_LAST_MONTH, _PERIOD_CURRENT_MONTH] else 'DAILY',
                 Metrics=['UnblendedCost'],
                 GroupBy=[{
                     'Type': 'DIMENSION',
@@ -269,7 +273,7 @@ class CostTracker:
         if current_month:
             total = current_month.get('total', 0.0)
             breakdown = current_month.get('breakdown', {})
-            period = current_month.get('period', 'Current Month')
+            period = current_month.get('period', _PERIOD_CURRENT_MONTH)
 
             lines.append(f"{period}: ${total:.2f} {currency}")
 
@@ -285,7 +289,7 @@ class CostTracker:
         if last_month:
             total = last_month.get('total', 0.0)
             breakdown = last_month.get('breakdown', {})
-            period = last_month.get('period', 'Last Month')
+            period = last_month.get('period', _PERIOD_LAST_MONTH)
 
             lines.append(f"{period}: ${total:.2f} {currency}")
 

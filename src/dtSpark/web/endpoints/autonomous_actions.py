@@ -20,6 +20,9 @@ from pydantic import BaseModel, Field
 
 from ..dependencies import get_current_session
 
+# Error message constants
+_ERR_ACTION_NOT_FOUND = "Action not found"
+
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +38,10 @@ def parse_datetime(dt_value):
     if isinstance(dt_value, str):
         try:
             return datetime.fromisoformat(dt_value.replace('Z', '+00:00'))
-        except:
+        except (ValueError, TypeError):
             try:
                 return datetime.strptime(dt_value, '%Y-%m-%d %H:%M:%S.%f')
-            except:
+            except (ValueError, TypeError):
                 return None
     return None
 
@@ -213,7 +216,7 @@ async def get_action(
 
         action = database.get_action(action_id)
         if not action:
-            raise HTTPException(status_code=404, detail="Action not found")
+            raise HTTPException(status_code=404, detail=_ERR_ACTION_NOT_FOUND)
 
         tool_permissions = database.get_action_tool_permissions(action_id)
 
@@ -326,7 +329,7 @@ async def update_action(
 
         action = database.get_action(action_id)
         if not action:
-            raise HTTPException(status_code=404, detail="Action not found")
+            raise HTTPException(status_code=404, detail=_ERR_ACTION_NOT_FOUND)
 
         # Build updates dict
         updates = {}
@@ -390,7 +393,7 @@ async def delete_action(
 
         action = database.get_action(action_id)
         if not action:
-            raise HTTPException(status_code=404, detail="Action not found")
+            raise HTTPException(status_code=404, detail=_ERR_ACTION_NOT_FOUND)
 
         # Unschedule the action
         if hasattr(app_instance, 'action_scheduler') and app_instance.action_scheduler:
@@ -432,7 +435,7 @@ async def enable_action(
 
         action = database.get_action(action_id)
         if not action:
-            raise HTTPException(status_code=404, detail="Action not found")
+            raise HTTPException(status_code=404, detail=_ERR_ACTION_NOT_FOUND)
 
         database.enable_action(action_id)
 
@@ -479,7 +482,7 @@ async def disable_action(
 
         action = database.get_action(action_id)
         if not action:
-            raise HTTPException(status_code=404, detail="Action not found")
+            raise HTTPException(status_code=404, detail=_ERR_ACTION_NOT_FOUND)
 
         database.disable_action(action_id)
 
@@ -520,7 +523,7 @@ async def run_action_now(
 
         action = database.get_action(action_id)
         if not action:
-            raise HTTPException(status_code=404, detail="Action not found")
+            raise HTTPException(status_code=404, detail=_ERR_ACTION_NOT_FOUND)
 
         # Check if action is currently locked by another process (e.g., daemon)
         from dtSpark.database.autonomous_actions import get_action_lock_info
@@ -583,7 +586,7 @@ async def list_action_runs(
 
         action = database.get_action(action_id)
         if not action:
-            raise HTTPException(status_code=404, detail="Action not found")
+            raise HTTPException(status_code=404, detail=_ERR_ACTION_NOT_FOUND)
 
         runs = database.get_action_runs(action_id, limit=limit, offset=offset)
 

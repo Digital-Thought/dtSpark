@@ -84,6 +84,16 @@ def copy_to_clipboard(text: str) -> bool:
         logging.error(f"Failed to copy to clipboard: {e}")
         return False
 
+# Common string constants (SonarCloud S1192)
+_SETTING_BEDROCK_COST_TRACKING = 'llm_providers.aws_bedrock.cost_tracking.enabled'
+_SETTING_COST_TRACKING = 'aws.cost_tracking.enabled'
+_SETTING_OLLAMA_ENABLED = 'llm_providers.ollama.enabled'
+_DEFAULT_RUNNING_DIR = "./running"
+_PROMPT_ACCESS_MODE = "Select access mode"
+_MSG_NO_MODELS = "No models available"
+_MSG_MANAGED_CONVERSATION = "This conversation is managed by configuration"
+_MSG_DELETE_CANCELLED = "Delete operation cancelled"
+
 class AWSBedrockCLI(AbstractApp):
     def __init__(self):
         super().__init__(short_name=agent_type(), full_name=full_name(), version=version(),
@@ -371,10 +381,11 @@ class AWSBedrockCLI(AbstractApp):
                 aws_session_token = self.settings.get('aws.session_token', None)
 
             # Configure CLI cost tracking display
-            cost_tracking_enabled = self._get_nested_setting('llm_providers.aws_bedrock.cost_tracking.enabled', None)
+            cost_tracking_enabled = self._get_nested_setting(_SETTING_BEDROCK_COST_TRACKING, None)
             if cost_tracking_enabled is None:
-                cost_tracking_enabled = self.settings.get('aws.cost_tracking.enabled', False)
+                cost_tracking_enabled = self.settings.get(_SETTING_COST_TRACKING, False)
             self.cli.cost_tracking_enabled = cost_tracking_enabled
+            self.cli.actions_enabled = self._get_nested_setting('autonomous_actions.enabled', False)
 
             progress.update(task_config, advance=100)
 
@@ -391,7 +402,7 @@ class AWSBedrockCLI(AbstractApp):
             # Handle missing or various value types
             if aws_enabled_raw is None:
                 # Setting not found via any method - check if other providers are enabled
-                ollama_check = self._get_nested_setting('llm_providers.ollama.enabled', False)
+                ollama_check = self._get_nested_setting(_SETTING_OLLAMA_ENABLED, False)
                 anthropic_check = self._get_nested_setting('llm_providers.anthropic.enabled', False)
                 if ollama_check or anthropic_check:
                     # Other providers configured, don't default to AWS
@@ -432,7 +443,7 @@ class AWSBedrockCLI(AbstractApp):
                     self.cli.print_warning("Failed to authenticate with AWS Bedrock")
 
                     # Check if Ollama is available as fallback
-                    ollama_enabled = self._get_nested_setting('llm_providers.ollama.enabled', False)
+                    ollama_enabled = self._get_nested_setting(_SETTING_OLLAMA_ENABLED, False)
                     if not ollama_enabled:
                         self.cli.print_error("AWS authentication required (Ollama not configured)")
                         self.cli.print_info(f"Run: aws sso login --profile {aws_profile}")
@@ -457,7 +468,7 @@ class AWSBedrockCLI(AbstractApp):
             progress.update(task_llm, advance=20, description="[cyan]Checking Ollama...")
 
             # Check Ollama configuration
-            ollama_enabled = self._get_nested_setting('llm_providers.ollama.enabled', False)
+            ollama_enabled = self._get_nested_setting(_SETTING_OLLAMA_ENABLED, False)
             if ollama_enabled:
                 try:
                     ollama_url = self._get_nested_setting(
@@ -529,9 +540,9 @@ class AWSBedrockCLI(AbstractApp):
 
             # Task 3.5: Retrieve Bedrock cost information (silently, display later)
             # Only if cost tracking is enabled in configuration
-            cost_tracking_enabled = self._get_nested_setting('llm_providers.aws_bedrock.cost_tracking.enabled', None)
+            cost_tracking_enabled = self._get_nested_setting(_SETTING_BEDROCK_COST_TRACKING, None)
             if cost_tracking_enabled is None:
-                cost_tracking_enabled = self.settings.get('aws.cost_tracking.enabled', False)
+                cost_tracking_enabled = self.settings.get(_SETTING_COST_TRACKING, False)
             if cost_tracking_enabled and self.authenticator:
                 task_costs = progress.add_task("[cyan]Retrieving usage costs...", total=100)
                 self.bedrock_costs = None
@@ -796,77 +807,87 @@ class AWSBedrockCLI(AbstractApp):
             )
             progress.update(task_conv, advance=100)
 
-            # Task 7: Initialise autonomous action scheduler
+            # Task 7: Initialise autonomous action scheduler (if enabled)
+            self.actions_enabled = self._get_nested_setting('autonomous_actions.enabled', False)
             task_scheduler = progress.add_task("[cyan]Initialising action scheduler...", total=100)
-            try:
-                from dtSpark.scheduler import (
-                    ActionSchedulerManager,
-                    ActionExecutionQueue,
-                    ActionExecutor
-                )
 
-                # Get database path for scheduler job store
-                db_path = self.database.db_path or ':memory:'
-
-                # Create executor with LLM manager and optional MCP manager
-                get_tools_func = None
-                if self.mcp_manager:
-                    def get_tools_func():
-                        import asyncio
-                        loop = getattr(self.mcp_manager, '_initialization_loop', None)
-                        if loop and not loop.is_closed():
-                            return loop.run_until_complete(self.mcp_manager.list_all_tools())
-                        return []
-
-                self.action_executor = ActionExecutor(
-                    database=self.database,
-                    llm_manager=self.llm_manager,
-                    mcp_manager=self.mcp_manager,
-                    get_tools_func=get_tools_func,
-                    config=config_for_manager
-                )
-
-                # Create execution queue
-                self.execution_queue = ActionExecutionQueue(
-                    executor_func=self.action_executor.execute
-                )
-
-                # Create scheduler manager
-                self.action_scheduler = ActionSchedulerManager(
-                    db_path=db_path,
-                    execution_callback=lambda action_id, user_guid: self.execution_queue.enqueue(
-                        action_id, user_guid, is_manual=False
+            if not self.actions_enabled:
+                logging.info("Autonomous actions are disabled via configuration")
+                self.action_scheduler = None
+                self.execution_queue = None
+                self.action_executor = None
+                self.daemon_is_running = False
+                progress.update(task_scheduler, advance=100)
+            else:
+                try:
+                    from dtSpark.scheduler import (
+                        ActionSchedulerManager,
+                        ActionExecutionQueue,
+                        ActionExecutor
                     )
-                )
 
-                # Check if daemon is running (for warning display later)
-                self.daemon_is_running = self._check_daemon_running()
+                    # Get database path for scheduler job store
+                    db_path = self.database.db_path or ':memory:'
 
-                # Initialise execution components (for manual "Run Now" from UI)
-                # Note: Scheduled execution is ONLY handled by the daemon process
-                self.action_scheduler.initialise()
-                self.execution_queue.start()
+                    # Create executor with LLM manager and optional MCP manager
+                    get_tools_func = None
+                    if self.mcp_manager:
+                        def get_tools_func():
+                            import asyncio
+                            loop = getattr(self.mcp_manager, '_initialization_loop', None)
+                            if loop and not loop.is_closed():
+                                return loop.run_until_complete(self.mcp_manager.list_all_tools())
+                            return []
 
-                # UI never starts the scheduler - daemon handles all scheduled execution
-                if self.daemon_is_running:
-                    logging.info("Daemon is running - scheduled actions will be executed by daemon")
-                else:
-                    logging.warning("Daemon is not running - scheduled actions will NOT execute until daemon is started")
+                    self.action_executor = ActionExecutor(
+                        database=self.database,
+                        llm_manager=self.llm_manager,
+                        mcp_manager=self.mcp_manager,
+                        get_tools_func=get_tools_func,
+                        config=config_for_manager
+                    )
 
-                progress.update(task_scheduler, advance=100)
+                    # Create execution queue
+                    self.execution_queue = ActionExecutionQueue(
+                        executor_func=self.action_executor.execute
+                    )
 
-            except ImportError as e:
-                logging.warning(f"Action scheduler not available (APScheduler not installed): {e}")
-                self.action_scheduler = None
-                self.execution_queue = None
-                self.action_executor = None
-                progress.update(task_scheduler, advance=100)
-            except Exception as e:
-                logging.error(f"Failed to initialise action scheduler: {e}")
-                self.action_scheduler = None
-                self.execution_queue = None
-                self.action_executor = None
-                progress.update(task_scheduler, advance=100)
+                    # Create scheduler manager
+                    self.action_scheduler = ActionSchedulerManager(
+                        db_path=db_path,
+                        execution_callback=lambda action_id, user_guid: self.execution_queue.enqueue(
+                            action_id, user_guid, is_manual=False
+                        )
+                    )
+
+                    # Check if daemon is running (for warning display later)
+                    self.daemon_is_running = self._check_daemon_running()
+
+                    # Initialise execution components (for manual "Run Now" from UI)
+                    # Note: Scheduled execution is ONLY handled by the daemon process
+                    self.action_scheduler.initialise()
+                    self.execution_queue.start()
+
+                    # UI never starts the scheduler - daemon handles all scheduled execution
+                    if self.daemon_is_running:
+                        logging.info("Daemon is running - scheduled actions will be executed by daemon")
+                    else:
+                        logging.warning("Daemon is not running - scheduled actions will NOT execute until daemon is started")
+
+                    progress.update(task_scheduler, advance=100)
+
+                except ImportError as e:
+                    logging.warning(f"Action scheduler not available (APScheduler not installed): {e}")
+                    self.action_scheduler = None
+                    self.execution_queue = None
+                    self.action_executor = None
+                    progress.update(task_scheduler, advance=100)
+                except Exception as e:
+                    logging.error(f"Failed to initialise action scheduler: {e}")
+                    self.action_scheduler = None
+                    self.execution_queue = None
+                    self.action_executor = None
+                    progress.update(task_scheduler, advance=100)
 
         # Display application info first (user identification)
         self.cli.display_application_info(self.user_guid)
@@ -881,8 +902,8 @@ class AWSBedrockCLI(AbstractApp):
         if mcp_enabled and self.mcp_manager:
             self.cli.display_mcp_status(self.mcp_manager)
 
-        # Display daemon status warning if daemon is not running
-        if hasattr(self, 'daemon_is_running') and not self.daemon_is_running:
+        # Display daemon status warning if daemon is not running (only when actions are enabled)
+        if self.actions_enabled and hasattr(self, 'daemon_is_running') and not self.daemon_is_running:
             # Check if there are any scheduled actions
             try:
                 actions = self.database.get_all_actions(include_disabled=False)
@@ -1638,7 +1659,7 @@ class AWSBedrockCLI(AbstractApp):
         enable_filesystem_tools = Confirm.ask("Enable embedded filesystem tools?", default=False)
 
         # Default values
-        filesystem_allowed_path = "./running"
+        filesystem_allowed_path = _DEFAULT_RUNNING_DIR
         filesystem_access_mode = "read_write"
 
         if enable_filesystem_tools:
@@ -1648,7 +1669,7 @@ class AWSBedrockCLI(AbstractApp):
 
             filesystem_allowed_path = Prompt.ask(
                 "Allowed directory path (tools can only access files within this directory)",
-                default="./running"
+                default=_DEFAULT_RUNNING_DIR
             )
 
             # Access mode
@@ -1661,7 +1682,7 @@ class AWSBedrockCLI(AbstractApp):
             cli.console.print("  [2] Read/Write - Full access (read + write files, create directories)")
             cli.console.print()
             access_mode_choice = Prompt.ask(
-                "Select access mode",
+                _PROMPT_ACCESS_MODE,
                 choices=["1", "2"],
                 default="2"
             )
@@ -1674,7 +1695,7 @@ class AWSBedrockCLI(AbstractApp):
         enable_document_tools = Confirm.ask("Enable embedded document tools (MS Office & PDF)?", default=False)
 
         # Default values
-        document_allowed_path = "./running"
+        document_allowed_path = _DEFAULT_RUNNING_DIR
         document_access_mode = "read"
         document_max_file_size = "50"
         document_max_pdf_pages = "100"
@@ -1689,7 +1710,7 @@ class AWSBedrockCLI(AbstractApp):
 
             document_allowed_path = Prompt.ask(
                 "Allowed directory path for documents",
-                default="./running"
+                default=_DEFAULT_RUNNING_DIR
             )
 
             # Access mode
@@ -1702,7 +1723,7 @@ class AWSBedrockCLI(AbstractApp):
             cli.console.print("  [2] Read/Write - Read and create documents")
             cli.console.print()
             doc_access_mode_choice = Prompt.ask(
-                "Select access mode",
+                _PROMPT_ACCESS_MODE,
                 choices=["1", "2"],
                 default="1"
             )
@@ -1742,7 +1763,7 @@ class AWSBedrockCLI(AbstractApp):
         enable_archive_tools = Confirm.ask("Enable embedded archive tools (ZIP, TAR)?", default=False)
 
         # Default values
-        archive_allowed_path = "./running"
+        archive_allowed_path = _DEFAULT_RUNNING_DIR
         archive_access_mode = "read"
         archive_max_file_size = "100"
         archive_max_files_to_list = "1000"
@@ -1754,7 +1775,7 @@ class AWSBedrockCLI(AbstractApp):
 
             archive_allowed_path = Prompt.ask(
                 "Allowed directory path for archives",
-                default="./running"
+                default=_DEFAULT_RUNNING_DIR
             )
 
             # Access mode
@@ -1767,7 +1788,7 @@ class AWSBedrockCLI(AbstractApp):
             cli.console.print("  [2] Read/Write - Read and extract archives to disk")
             cli.console.print()
             archive_access_mode_choice = Prompt.ask(
-                "Select access mode",
+                _PROMPT_ACCESS_MODE,
                 choices=["1", "2"],
                 default="1"
             )
@@ -2211,14 +2232,14 @@ class AWSBedrockCLI(AbstractApp):
                 if document_templates_path:
                     escaped_templates_path = document_templates_path.replace('\\', '/')
                     config_content = re.sub(
-                        r'(templates_path:\s+)(null|[^\s#]+)',
+                        r'(templates_path:\s+)([^\s#]+)',
                         f'\\g<1>{escaped_templates_path}',
                         config_content
                     )
                 # Default author (if provided)
                 if document_default_author:
                     config_content = re.sub(
-                        r'(default_author:\s+)(null|[^\s#]+)',
+                        r'(default_author:\s+)([^\s#]+)',
                         f'\\g<1>{document_default_author}',
                         config_content
                     )
@@ -2377,9 +2398,9 @@ class AWSBedrockCLI(AbstractApp):
     def regather_and_display_costs(self):
         """Re-gather AWS Bedrock cost information and display it."""
         # Check if cost tracking is enabled (new path with legacy fallback)
-        cost_tracking_enabled = self._get_nested_setting('llm_providers.aws_bedrock.cost_tracking.enabled', None)
+        cost_tracking_enabled = self._get_nested_setting(_SETTING_BEDROCK_COST_TRACKING, None)
         if cost_tracking_enabled is None:
-            cost_tracking_enabled = self.settings.get('aws.cost_tracking.enabled', False)
+            cost_tracking_enabled = self.settings.get(_SETTING_COST_TRACKING, False)
         if not cost_tracking_enabled:
             self.cli.print_warning("Cost tracking is disabled in configuration")
             return
@@ -2748,7 +2769,7 @@ class AWSBedrockCLI(AbstractApp):
         # Step 1: Select model (will be used for both creation and execution)
         models = self.llm_manager.list_all_models()
         if not models:
-            self.cli.print_error("No models available")
+            self.cli.print_error(_MSG_NO_MODELS)
             return
 
         self.cli.console.print("\n[bold cyan]Select Model[/bold cyan]")
@@ -2942,7 +2963,7 @@ class AWSBedrockCLI(AbstractApp):
             progress.update(task, advance=100)
 
         if not models:
-            self.cli.print_error("No models available")
+            self.cli.print_error(_MSG_NO_MODELS)
             return None
 
         model_id = self.cli.display_models(models)
@@ -3223,7 +3244,7 @@ class AWSBedrockCLI(AbstractApp):
                 # Check if conversation is predefined - if so, block file deletion
                 if self.database.is_conversation_predefined(self.conversation_manager.current_conversation_id):
                     self.cli.print_error("Cannot delete files from predefined conversations")
-                    self.cli.print_info("This conversation is managed by configuration")
+                    self.cli.print_info(_MSG_MANAGED_CONVERSATION)
                     self.cli.wait_for_enter()
                     continue
 
@@ -3247,7 +3268,7 @@ class AWSBedrockCLI(AbstractApp):
                 file_ids_input = self.cli.get_input("File IDs to delete").strip()
 
                 if not file_ids_input:
-                    self.cli.print_info("Delete operation cancelled")
+                    self.cli.print_info(_MSG_DELETE_CANCELLED)
                     self.cli.wait_for_enter()
                     continue
 
@@ -3267,7 +3288,7 @@ class AWSBedrockCLI(AbstractApp):
                         else:
                             self.cli.print_error("Failed to delete files")
                     else:
-                        self.cli.print_info("Delete operation cancelled")
+                        self.cli.print_info(_MSG_DELETE_CANCELLED)
                 else:
                     # Parse comma-separated IDs
                     try:
@@ -3297,7 +3318,7 @@ class AWSBedrockCLI(AbstractApp):
                             if failed_ids:
                                 self.cli.print_error(f"Failed to delete files with IDs: {', '.join(map(str, failed_ids))}")
                         else:
-                            self.cli.print_info("Delete operation cancelled")
+                            self.cli.print_info(_MSG_DELETE_CANCELLED)
 
                     except ValueError:
                         self.cli.print_error("Invalid file IDs. Please enter comma-separated numbers or 'all'")
@@ -3309,7 +3330,7 @@ class AWSBedrockCLI(AbstractApp):
                 # Check if conversation is predefined - if so, block model changes
                 if self.database.is_conversation_predefined(self.conversation_manager.current_conversation_id):
                     self.cli.print_error("Cannot change model for predefined conversations")
-                    self.cli.print_info("This conversation is managed by configuration")
+                    self.cli.print_info(_MSG_MANAGED_CONVERSATION)
                     self.cli.wait_for_enter()
                     continue
 
@@ -3327,7 +3348,7 @@ class AWSBedrockCLI(AbstractApp):
                     progress.update(task, advance=100)
 
                 if not models:
-                    self.cli.print_error("No models available")
+                    self.cli.print_error(_MSG_NO_MODELS)
                     self.cli.wait_for_enter()
                     continue
 
@@ -3374,7 +3395,7 @@ class AWSBedrockCLI(AbstractApp):
                 # Check if conversation is predefined - if so, block instruction changes
                 if self.database.is_conversation_predefined(self.conversation_manager.current_conversation_id):
                     self.cli.print_error("Cannot change instructions for predefined conversations")
-                    self.cli.print_info("This conversation is managed by configuration")
+                    self.cli.print_info(_MSG_MANAGED_CONVERSATION)
                     self.cli.wait_for_enter()
                     continue
 

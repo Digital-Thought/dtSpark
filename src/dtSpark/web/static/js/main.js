@@ -74,7 +74,7 @@ if (typeof marked !== 'undefined') {
 
         // Handle mermaid diagrams
         if (lang === 'mermaid') {
-            const id = 'mermaid-' + Math.random().toString(36).substr(2, 9);
+            const id = 'mermaid-' + Math.random().toString(36).substring(2, 11);
             return `<div class="mermaid-container"><pre class="mermaid" id="${id}">${escapeHtmlForMermaid(code)}</pre></div>`;
         }
 
@@ -157,7 +157,7 @@ async function copySvgToClipboard(svgElement, button) {
         bgRect.setAttribute('width', '100%');
         bgRect.setAttribute('height', '100%');
         bgRect.setAttribute('fill', '#1a1a1a');
-        svgClone.insertBefore(bgRect, svgClone.firstChild);
+        svgClone.prepend(bgRect);
 
         // Serialise SVG to string
         const serializer = new XMLSerializer();
@@ -255,7 +255,7 @@ async function renderMermaidDiagrams(container) {
 
     for (const block of mermaidBlocks) {
         try {
-            const id = block.id || 'mermaid-' + Math.random().toString(36).substr(2, 9);
+            const id = block.id || 'mermaid-' + Math.random().toString(36).substring(2, 11);
             const code = block.textContent;
 
             // Render the diagram
@@ -287,7 +287,7 @@ async function renderMermaidDiagrams(container) {
                 }
             };
 
-            block.parentNode.replaceChild(wrapper, block);
+            block.replaceWith(wrapper);
         } catch (e) {
             console.error('Mermaid rendering error:', e);
             // Show error message in the block
@@ -370,9 +370,9 @@ function showToast(message, type = 'info') {
     // Create toast
     const toast = document.createElement('div');
     toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type} border-0`;
-    toast.setAttribute('role', 'alert');
-    toast.setAttribute('aria-live', 'assertive');
-    toast.setAttribute('aria-atomic', 'true');
+    toast.role = 'alert';
+    toast.ariaLive = 'assertive';
+    toast.ariaAtomic = 'true';
 
     toast.innerHTML = `
         <div class="d-flex">
@@ -432,7 +432,7 @@ function downloadFile(content, filename, mimeType = 'text/plain') {
     link.download = filename;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
     URL.revokeObjectURL(url);
 }
 

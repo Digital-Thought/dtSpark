@@ -53,7 +53,7 @@
                     <tbody id="actions-tbody">
                         <tr>
                             <td colspan="9" class="text-center text-muted py-4">
-                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                <output class="spinner-border spinner-border-sm"></output>
                                 Loading actions...
                             </td>
                         </tr>
@@ -85,7 +85,7 @@
                     <tbody id="runs-tbody">
                         <tr>
                             <td colspan="7" class="text-center text-muted py-4">
-                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                <output class="spinner-border spinner-border-sm"></output>
                                 Loading recent runs...
                             </td>
                         </tr>
@@ -172,7 +172,7 @@
 
                     <!-- Tool Permissions -->
                     <div class="mb-3">
-                        <label class="form-label">Tool Permissions</label>
+                        <span class="form-label d-block">Tool Permissions</span>
                         <div class="card">
                             <div class="card-body" style="max-height: 200px; overflow-y: auto;">
                                 <div id="toolPermissions">
@@ -374,14 +374,14 @@
                         <div class="alert alert-success mb-0">
                             <i class="bi bi-check-circle-fill"></i>
                             Action created successfully!
-                            <a href="#" id="viewCreatedAction" onclick="viewCreatedAction(); return false;">View action details</a>
+                            <button type="button" id="viewCreatedAction" class="btn btn-link p-0 align-baseline" onclick="viewCreatedAction();">View action details</button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Loading Indicator -->
                 <div id="aiCreateLoading" class="d-none text-center py-4">
-                    <div class="spinner-border text-primary" role="status"></div>
+                    <output class="spinner-border text-primary"></output>
                     <p class="mt-2 text-muted">AI is thinking...</p>
                 </div>
             </div>

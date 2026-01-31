@@ -17,151 +17,159 @@ async function sendMessageWithSSE(conversationId, message) {
     let streamingMessageElement = null;
     let accumulatedContent = '';
 
-    try {
-        // Create EventSource for SSE
-        const encodedMessage = encodeURIComponent(message);
-        const eventSource = new EventSource(
-            `/api/stream/chat?message=${encodedMessage}&conversation_id=${conversationId}`
-        );
+    return new Promise((resolve) => {
+        try {
+            // Create EventSource for SSE
+            const encodedMessage = encodeURIComponent(message);
+            const eventSource = new EventSource(
+                `/api/stream/chat?message=${encodedMessage}&conversation_id=${conversationId}`
+            );
 
-        // Handle different event types
-        eventSource.addEventListener('status', (event) => {
-            const data = JSON.parse(event.data);
-            console.log('Status:', data);
+            // Handle different event types
+            eventSource.addEventListener('status', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Status:', data);
 
-            // Update typing indicator with status
-            if (typingIndicator && typingIndicator.parentNode) {
-                const statusText = data.message || '';
-                typingIndicator.querySelector('.visually-hidden').nextSibling.textContent = statusText;
-            }
-        });
-
-        eventSource.addEventListener('response', (event) => {
-            const data = JSON.parse(event.data);
-            console.log('Received response event:', data);
-
-            // Hide typing indicator on first response
-            if (typingIndicator && typingIndicator.parentNode) {
-                console.log('Hiding typing indicator');
-                hideTypingIndicator();
-                typingIndicator = null;  // Clear reference after hiding
-            }
-
-            if (data.type === 'text') {
-                if (data.final) {
-                    // Final response - this is the main assistant response after tool execution
-                    console.log('Final response received, content length:', data.content ? data.content.length : 0);
-                    accumulatedContent += data.content;
-                    console.log('Accumulated content:', accumulatedContent);
-
-                    // Ensure we have content before displaying
-                    if (accumulatedContent.trim().length > 0) {
-                        streamingMessageElement = updateStreamingMessage(
-                            accumulatedContent,
-                            streamingMessageElement
-                        );
-                        console.log('Updated streaming message element:', streamingMessageElement);
-                    } else {
-                        console.warn('No content to display');
-                    }
-                    eventSource.close();
-                } else {
-                    // Non-final response - text that appears with tool calls
-                    // Display immediately as a separate message
-                    console.log('Non-final response, appending:', data.content);
-                    appendMessage('assistant', data.content);
+                // Update typing indicator with status
+                if (typingIndicator && typingIndicator.parentNode) {
+                    const statusText = data.message || '';
+                    typingIndicator.querySelector('.visually-hidden').nextSibling.textContent = statusText;
                 }
-            }
-        });
+            });
 
-        eventSource.addEventListener('tool_start', (event) => {
-            const data = JSON.parse(event.data);
-            appendToolCall(data.tool_name, data.input);
-        });
+            eventSource.addEventListener('response', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received response event:', data);
 
-        eventSource.addEventListener('tool_complete', (event) => {
-            const data = JSON.parse(event.data);
-            // Display tool result
-            appendToolResult(data.tool_use_id, { content: data.content });
-        });
+                // Hide typing indicator on first response
+                if (typingIndicator && typingIndicator.parentNode) {
+                    console.log('Hiding typing indicator');
+                    hideTypingIndicator();
+                    typingIndicator = null;  // Clear reference after hiding
+                }
 
-        eventSource.addEventListener('tool_error', (event) => {
-            const data = JSON.parse(event.data);
-            appendToolResult(data.tool_name, { error: data.error });
-        });
+                if (data.type === 'text') {
+                    if (data.final) {
+                        // Final response - this is the main assistant response after tool execution
+                        console.log('Final response received, content length:', data.content ? data.content.length : 0);
+                        accumulatedContent += data.content;
+                        console.log('Accumulated content:', accumulatedContent);
 
-        eventSource.addEventListener('permission_request', (event) => {
-            const data = JSON.parse(event.data);
-            console.log('Permission request received:', data);
+                        // Ensure we have content before displaying
+                        if (accumulatedContent.trim().length > 0) {
+                            streamingMessageElement = updateStreamingMessage(
+                                accumulatedContent,
+                                streamingMessageElement
+                            );
+                            console.log('Updated streaming message element:', streamingMessageElement);
+                        } else {
+                            console.warn('No content to display');
+                        }
+                        eventSource.close();
+                        resolve();
+                    } else {
+                        // Non-final response - text that appears with tool calls
+                        // Display immediately as a separate message
+                        console.log('Non-final response, appending:', data.content);
+                        appendMessage('assistant', data.content);
+                    }
+                }
+            });
 
-            // Show permission modal/dialog
-            showToolPermissionDialog(data.request_id, data.tool_name, data.tool_description);
-        });
+            eventSource.addEventListener('tool_start', (event) => {
+                const data = JSON.parse(event.data);
+                appendToolCall(data.tool_name, data.input);
+            });
 
-        eventSource.addEventListener('progress', (event) => {
-            const data = JSON.parse(event.data);
-            // Update progress (if we want to show a progress bar)
-            console.log('Progress:', data);
-        });
+            eventSource.addEventListener('tool_complete', (event) => {
+                const data = JSON.parse(event.data);
+                // Display tool result
+                appendToolResult(data.tool_use_id, { content: data.content });
+            });
 
-        eventSource.addEventListener('complete', (event) => {
-            // Stream complete
-            console.log('Stream complete');
-            eventSource.close();
+            eventSource.addEventListener('tool_error', (event) => {
+                const data = JSON.parse(event.data);
+                appendToolResult(data.tool_name, { error: data.error });
+            });
 
-            // Hide typing indicator if still visible
-            if (typingIndicator && typingIndicator.parentNode) {
-                console.log('Hiding typing indicator on complete');
-                hideTypingIndicator();
-                typingIndicator = null;
-            }
-        });
+            eventSource.addEventListener('permission_request', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Permission request received:', data);
 
-        eventSource.addEventListener('error', (event) => {
-            console.error('SSE error:', event);
-            const data = JSON.parse(event.data);
+                // Show permission modal/dialog
+                showToolPermissionDialog(data.request_id, data.tool_name, data.tool_description);
+            });
+
+            eventSource.addEventListener('progress', (event) => {
+                const data = JSON.parse(event.data);
+                // Update progress (if we want to show a progress bar)
+                console.log('Progress:', data);
+            });
+
+            eventSource.addEventListener('complete', (event) => {
+                // Stream complete
+                console.log('Stream complete');
+                eventSource.close();
+
+                // Hide typing indicator if still visible
+                if (typingIndicator && typingIndicator.parentNode) {
+                    console.log('Hiding typing indicator on complete');
+                    hideTypingIndicator();
+                    typingIndicator = null;
+                }
+
+                resolve();
+            });
+
+            eventSource.addEventListener('error', (event) => {
+                console.error('SSE error:', event);
+                const data = JSON.parse(event.data);
+
+                // Hide typing indicator
+                if (typingIndicator && typingIndicator.parentNode) {
+                    console.log('Hiding typing indicator on error');
+                    hideTypingIndicator();
+                    typingIndicator = null;
+                }
+
+                // Show error message
+                appendMessage('system', `Error: ${data.message}`);
+
+                eventSource.close();
+                resolve();
+            });
+
+            eventSource.onerror = (error) => {
+                console.error('EventSource failed:', error);
+
+                // Hide typing indicator
+                if (typingIndicator && typingIndicator.parentNode) {
+                    console.log('Hiding typing indicator on connection error');
+                    hideTypingIndicator();
+                    typingIndicator = null;
+                }
+
+                // If we haven't received any content, show error
+                if (!streamingMessageElement) {
+                    appendMessage('system', 'Connection error. Please try again.');
+                }
+
+                eventSource.close();
+                resolve();
+            };
+
+        } catch (error) {
+            console.error('Error sending message:', error);
 
             // Hide typing indicator
-            if (typingIndicator && typingIndicator.parentNode) {
-                console.log('Hiding typing indicator on error');
+            if (typingIndicator) {
                 hideTypingIndicator();
-                typingIndicator = null;
             }
 
-            // Show error message
-            appendMessage('system', `Error: ${data.message}`);
-
-            eventSource.close();
-        });
-
-        eventSource.onerror = (error) => {
-            console.error('EventSource failed:', error);
-
-            // Hide typing indicator
-            if (typingIndicator && typingIndicator.parentNode) {
-                console.log('Hiding typing indicator on connection error');
-                hideTypingIndicator();
-                typingIndicator = null;
-            }
-
-            // If we haven't received any content, show error
-            if (!streamingMessageElement) {
-                appendMessage('system', 'Connection error. Please try again.');
-            }
-
-            eventSource.close();
-        };
-
-    } catch (error) {
-        console.error('Error sending message:', error);
-
-        // Hide typing indicator
-        if (typingIndicator) {
-            hideTypingIndicator();
+            showToast('Failed to send message', 'error');
+            resolve();
         }
-
-        showToast('Failed to send message', 'error');
-    }
+    });
 }
 
 /**

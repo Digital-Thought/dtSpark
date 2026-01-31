@@ -24,7 +24,7 @@ print("\nFirst 5 products:")
 for i, (sku, product) in enumerate(list(products.items())[:5]):
     print(f"\n  Product {i+1} (SKU: {sku}):")
     attributes = product.get('attributes', {})
-    print(f"    Attributes:")
+    print("    Attributes:")
     for key, value in list(attributes.items())[:10]:
         print(f"      {key}: {value}")
 
@@ -35,7 +35,7 @@ for sku, product in products.items():
     if family:
         product_families.add(family)
 
-print(f"\nProduct families found:")
+print("\nProduct families found:")
 for family in sorted(product_families):
     count = sum(1 for p in products.values() if p.get('attributes', {}).get('productFamily') == family)
     print(f"  - {family}: {count} products")
@@ -50,7 +50,7 @@ if inference_products:
     print("\nFirst Model Inference product:")
     sku, product = list(inference_products.items())[0]
     print(f"  SKU: {sku}")
-    print(f"  Attributes:")
+    print("  Attributes:")
     for key, value in product.get('attributes', {}).items():
         print(f"    {key}: {value}")
 

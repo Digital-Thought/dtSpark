@@ -45,7 +45,7 @@ class TokenManager:
         self.current_output_override = 0  # Additional output tokens allowed
         self.override_expires = None  # When the override expires
 
-    def check_limits_before_request(self, model_id: str, region: str,
+    def check_limits_before_request(self, _model_id: str, region: str,
                                     input_tokens: int, max_output_tokens: int) -> Tuple[bool, str, LimitStatus]:
         """
         Check if a request would exceed the token limits.
@@ -249,7 +249,7 @@ class TokenManager:
         message = "Token Limit Reached: "
 
         if input_exceeded and output_exceeded:
-            message += f"Both limits exceeded. "
+            message += "Both limits exceeded. "
         elif input_exceeded:
             message += f"Input limit exceeded: {current_input:,}/{input_limit:,} used, {request_input:,} requested. "
         else:

@@ -306,17 +306,11 @@ class FileManager:
         if not dir_path.is_dir():
             raise NotADirectoryError(f"Not a directory: {directory_path}")
 
-        supported_files = []
-
-        if recursive:
-            # Recursively find all files
-            for file_path in dir_path.rglob('*'):
-                if file_path.is_file() and cls.is_supported(str(file_path)):
-                    supported_files.append(str(file_path.absolute()))
-        else:
-            # Only scan immediate directory
-            for file_path in dir_path.iterdir():
-                if file_path.is_file() and cls.is_supported(str(file_path)):
-                    supported_files.append(str(file_path.absolute()))
+        iterator = dir_path.rglob('*') if recursive else dir_path.iterdir()
+        supported_files = [
+            str(file_path.absolute())
+            for file_path in iterator
+            if file_path.is_file() and cls.is_supported(str(file_path))
+        ]
 
         return sorted(supported_files)

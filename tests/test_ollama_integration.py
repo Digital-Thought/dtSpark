@@ -23,11 +23,11 @@ def main():
         print(f"   URL: {ollama_url}")
 
         ollama_service = OllamaService(base_url=ollama_url)
-        print(f"   [OK] Connected successfully to Ollama")
+        print("   [OK] Connected successfully to Ollama")
 
         # Register Ollama
         manager.register_provider(ollama_service)
-        print(f"   [OK] Registered Ollama provider")
+        print("   [OK] Registered Ollama provider")
 
     except Exception as e:
         print(f"   [FAIL] Failed to connect to Ollama: {e}")

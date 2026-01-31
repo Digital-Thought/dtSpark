@@ -16,39 +16,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from dtSpark.safety import PromptInspector
 
 
-def test_prompt_inspection():
-    """Test prompt inspection with various attack patterns."""
-
-    # Configuration for testing
-    config = {
-        'enabled': True,
-        'inspection_level': 'basic',
-        'action': 'warn',
-        'patterns': {
-            'check_prompt_injection': True,
-            'check_jailbreak': True,
-            'check_code_injection': True,
-            'check_pii': False,
-            'check_excessive_length': True,
-            'max_prompt_length': 50000
-        },
-        'llm_inspection': {
-            'enabled': False
-        },
-        'whitelist_users': [],
-        'log_violations': False
-    }
-
-    # Create inspector
-    inspector = PromptInspector(config=config)
-
-    print("=" * 80)
-    print("PROMPT INSPECTION TEST")
-    print("=" * 80)
-    print()
-
-    # Test cases
-    test_cases = [
+def _build_test_cases():
+    """Build and return the list of test cases."""
+    return [
         {
             'name': 'Normal Prompt',
             'prompt': 'Can you help me write a Python function to calculate fibonacci numbers?',
@@ -104,62 +74,115 @@ def test_prompt_inspection():
         }
     ]
 
+
+def _check_violation_match(test, result):
+    """Check if the detected violation matches the expected violation.
+
+    Returns True if violation matched or no specific violation was expected,
+    False if the violation did not match expectations.
+    """
+    expected_violation = test.get('expected_violation')
+    if not expected_violation:
+        print(f"  Violations: {', '.join(result.violation_types)}")
+        return True
+
+    if isinstance(expected_violation, list):
+        matched = any(ev in result.violation_types for ev in expected_violation)
+        if matched:
+            matched_violations = [ev for ev in expected_violation if ev in result.violation_types]
+            print(f"[PASS] Detected expected violation type: {matched_violations[0]}")
+            return True
+        print(f"[FAIL] Expected one of {expected_violation} but got {result.violation_types}")
+        return False
+
+    # Single expected violation
+    if expected_violation in result.violation_types:
+        print(f"[PASS] Detected expected violation type: {expected_violation}")
+        return True
+    print(f"[FAIL] Expected {expected_violation} but got {result.violation_types}")
+    return False
+
+
+def _run_single_test(inspector, test):
+    """Run a single test case and return whether it passed.
+
+    Returns True if the test passed, False otherwise.
+    """
+    print(f"Test: {test['name']}")
+    print("-" * 80)
+
+    # Inspect prompt
+    result = inspector.inspect_prompt(
+        prompt=test['prompt'][:100] + '...' if len(test['prompt']) > 100 else test['prompt'],
+        user_guid='test_user',
+        conversation_id=1
+    )
+
+    # Check result
+    is_safe = result.is_safe
+    expected_safe = test['expected_safe']
+
+    if is_safe != expected_safe:
+        print(f"[FAIL] Expected safe={expected_safe} but got safe={is_safe}")
+        if not is_safe:
+            print(f"  Violations: {', '.join(result.violation_types)}")
+            print(f"  Explanation: {result.explanation[:100]}...")
+        return False
+
+    print(f"[PASS] Safety check {'passed' if is_safe else 'detected violation'} as expected")
+
+    if not is_safe:
+        violation_matched = _check_violation_match(test, result)
+        print(f"  Severity: {result.severity}")
+        print(f"  Explanation: {result.explanation[:100]}...")
+        if not violation_matched:
+            return False
+
+    return True
+
+
+def test_prompt_inspection():
+    """Test prompt inspection with various attack patterns."""
+
+    # Configuration for testing
+    config = {
+        'enabled': True,
+        'inspection_level': 'basic',
+        'action': 'warn',
+        'patterns': {
+            'check_prompt_injection': True,
+            'check_jailbreak': True,
+            'check_code_injection': True,
+            'check_pii': False,
+            'check_excessive_length': True,
+            'max_prompt_length': 50000
+        },
+        'llm_inspection': {
+            'enabled': False
+        },
+        'whitelist_users': [],
+        'log_violations': False
+    }
+
+    # Create inspector
+    inspector = PromptInspector(config=config)
+
+    print("=" * 80)
+    print("PROMPT INSPECTION TEST")
+    print("=" * 80)
+    print()
+
+    test_cases = _build_test_cases()
+
     # Run tests
     passed = 0
     failed = 0
 
     for test in test_cases:
-        print(f"Test: {test['name']}")
-        print("-" * 80)
-
-        # Inspect prompt
-        result = inspector.inspect_prompt(
-            prompt=test['prompt'][:100] + '...' if len(test['prompt']) > 100 else test['prompt'],
-            user_guid='test_user',
-            conversation_id=1
-        )
-
-        # Check result
-        is_safe = result.is_safe
-        expected_safe = test['expected_safe']
-
-        if is_safe == expected_safe:
-            print(f"[PASS] Safety check {'passed' if is_safe else 'detected violation'} as expected")
-
-            if not is_safe:
-                expected_violation = test.get('expected_violation')
-                if expected_violation:
-                    # Handle both single violations and lists of acceptable violations
-                    if isinstance(expected_violation, list):
-                        # Check if any expected violation matches
-                        matched = any(ev in result.violation_types for ev in expected_violation)
-                        if matched:
-                            matched_violations = [ev for ev in expected_violation if ev in result.violation_types]
-                            print(f"[PASS] Detected expected violation type: {matched_violations[0]}")
-                        else:
-                            print(f"[FAIL] Expected one of {expected_violation} but got {result.violation_types}")
-                            failed += 1
-                    else:
-                        # Single expected violation
-                        if expected_violation in result.violation_types:
-                            print(f"[PASS] Detected expected violation type: {expected_violation}")
-                        else:
-                            print(f"[FAIL] Expected {expected_violation} but got {result.violation_types}")
-                            failed += 1
-                else:
-                    print(f"  Violations: {', '.join(result.violation_types)}")
-
-                print(f"  Severity: {result.severity}")
-                print(f"  Explanation: {result.explanation[:100]}...")
-
+        if _run_single_test(inspector, test):
             passed += 1
         else:
-            print(f"[FAIL] Expected safe={expected_safe} but got safe={is_safe}")
-            if not is_safe:
-                print(f"  Violations: {', '.join(result.violation_types)}")
-                print(f"  Explanation: {result.explanation[:100]}...")
             failed += 1
-
         print()
 
     # Summary

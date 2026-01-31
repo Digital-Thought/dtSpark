@@ -31,10 +31,7 @@ def prompt_for_credentials(db_type: str, existing_credentials: Optional[Database
     db_type_lower = db_type.lower()
 
     # Start with existing credentials or create new
-    if existing_credentials:
-        creds = existing_credentials
-    else:
-        creds = DatabaseCredentials()
+    creds = existing_credentials if existing_credentials else DatabaseCredentials()
 
     # SQLite only needs path
     if db_type_lower == 'sqlite':
@@ -46,6 +43,23 @@ def prompt_for_credentials(db_type: str, existing_credentials: Optional[Database
         return creds
 
     # Display information panel
+    _display_connection_panel(console, db_type)
+
+    # Prompt for remote database credentials
+    _prompt_remote_credentials(console, creds, db_type_lower)
+
+    # MSSQL-specific: driver selection
+    if db_type_lower in ('mssql', 'sqlserver', 'mssqlserver'):
+        _prompt_mssql_driver(console, creds)
+
+    console.print()
+    logging.info(f"Database credentials collected for {db_type}")
+
+    return creds
+
+
+def _display_connection_panel(console: Console, db_type: str) -> None:
+    """Display the database connection setup information panel."""
     console.print()
     console.print(Panel(
         f"[bold cyan]Database Connection Setup[/bold cyan]\n\n"
@@ -56,78 +70,62 @@ def prompt_for_credentials(db_type: str, existing_credentials: Optional[Database
     ))
     console.print()
 
-    # Prompt for remote database credentials
+
+def _prompt_remote_credentials(console: Console, creds: DatabaseCredentials, db_type_lower: str) -> None:
+    """Prompt for remote database connection credentials (host, port, database, username, password, SSL)."""
     if not creds.host:
-        creds.host = Prompt.ask(
-            "Database host",
-            default="localhost"
-        )
+        creds.host = Prompt.ask("Database host", default="localhost")
 
     if not creds.port:
         default_ports = {
-            'mysql': 3306,
-            'mariadb': 3306,
-            'postgresql': 5432,
-            'mssql': 1433,
-            'sqlserver': 1433
+            'mysql': 3306, 'mariadb': 3306,
+            'postgresql': 5432, 'mssql': 1433, 'sqlserver': 1433,
         }
         default_port = default_ports.get(db_type_lower, 3306)
-
-        port_input = Prompt.ask(
-            "Database port",
-            default=str(default_port)
-        )
+        port_input = Prompt.ask("Database port", default=str(default_port))
         creds.port = int(port_input)
 
     if not creds.database:
-        creds.database = Prompt.ask(
-            "Database name",
-            default="dtawsbedrockcli"
-        )
+        creds.database = Prompt.ask("Database name", default="dtawsbedrockcli")
 
     if not creds.username:
         creds.username = Prompt.ask("Database username")
 
     if not creds.password:
-        # Use getpass for secure password input
         console.print("[cyan]Database password:[/cyan] ", end="")
         creds.password = getpass.getpass("")
 
-    # SSL option
-    use_ssl = Confirm.ask("Use SSL/TLS connection?", default=False)
-    creds.ssl = use_ssl
+    creds.ssl = Confirm.ask("Use SSL/TLS connection?", default=False)
 
-    # MSSQL-specific: driver selection
-    if db_type_lower in ('mssql', 'sqlserver', 'mssqlserver'):
-        if not creds.driver:
-            drivers = [
-                "ODBC Driver 17 for SQL Server",
-                "ODBC Driver 18 for SQL Server",
-                "SQL Server Native Client 11.0",
-                "Custom"
-            ]
 
-            console.print()
-            console.print("[bold cyan]Select ODBC driver:[/bold cyan]")
-            for i, driver in enumerate(drivers, 1):
-                console.print(f"  [{i}] {driver}")
+def _prompt_mssql_driver(console: Console, creds: DatabaseCredentials) -> None:
+    """Prompt for MSSQL ODBC driver selection if not already set."""
+    if creds.driver:
+        return
 
-            choice = Prompt.ask(
-                "Driver selection",
-                choices=[str(i) for i in range(1, len(drivers) + 1)],
-                default="1"
-            )
-
-            choice_idx = int(choice) - 1
-            if choice_idx == len(drivers) - 1:  # Custom
-                creds.driver = Prompt.ask("Enter custom ODBC driver name")
-            else:
-                creds.driver = drivers[choice_idx]
+    drivers = [
+        "ODBC Driver 17 for SQL Server",
+        "ODBC Driver 18 for SQL Server",
+        "SQL Server Native Client 11.0",
+        "Custom",
+    ]
 
     console.print()
-    logging.info(f"Database credentials collected for {db_type}")
+    console.print("[bold cyan]Select ODBC driver:[/bold cyan]")
+    for i, driver in enumerate(drivers, 1):
+        console.print(f"  [{i}] {driver}")
 
-    return creds
+    choice = Prompt.ask(
+        "Driver selection",
+        choices=[str(i) for i in range(1, len(drivers) + 1)],
+        default="1",
+    )
+
+    choice_idx = int(choice) - 1
+    if choice_idx == len(drivers) - 1:  # Custom
+        creds.driver = Prompt.ask("Enter custom ODBC driver name")
+    else:
+        creds.driver = drivers[choice_idx]
 
 
 def test_credentials(db_type: str, credentials: DatabaseCredentials) -> tuple[bool, Optional[str]]:

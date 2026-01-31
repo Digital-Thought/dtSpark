@@ -2,7 +2,7 @@
 Tools for prompt-driven autonomous action creation.
 
 Exposes tools that an LLM can use to create scheduled actions through
-natural conversation. 
+natural conversation.
 """
 
 from typing import List, Dict, Any, Optional
@@ -256,7 +256,27 @@ def _list_available_tools(mcp_manager, config: Optional[Dict[str, Any]] = None) 
     tools = []
     errors = []
 
-    # Get built-in tools (including filesystem tools if enabled in config)
+    _collect_builtin_tools(tools, errors, config)
+    _collect_mcp_tools(tools, errors, mcp_manager)
+
+    result = {
+        'tools': tools,
+        'count': len(tools),
+        'message': f"Found {len(tools)} available tools"
+    }
+
+    if errors:
+        result['warnings'] = errors
+
+    return result
+
+
+def _collect_builtin_tools(
+    tools: List[Dict[str, Any]],
+    errors: List[str],
+    config: Optional[Dict[str, Any]]
+) -> None:
+    """Collect built-in tools (including filesystem tools if enabled in config)."""
     try:
         from dtSpark.tools import builtin
         builtin_config = config or {}
@@ -271,60 +291,65 @@ def _list_available_tools(mcp_manager, config: Optional[Dict[str, Any]] = None) 
         logger.warning(f"Failed to get built-in tools: {e}")
         errors.append(f"Builtin tools error: {e}")
 
-    # Get MCP tools
-    if mcp_manager:
-        logger.debug(f"MCP manager present: {type(mcp_manager)}")
-        try:
-            # Handle async MCP manager
-            if hasattr(mcp_manager, 'list_all_tools'):
-                # Check if there's an initialization loop stored
-                loop = getattr(mcp_manager, '_initialization_loop', None)
 
-                if loop and not loop.is_closed():
-                    # Use the existing loop
-                    mcp_tools = loop.run_until_complete(mcp_manager.list_all_tools())
-                else:
-                    # Create new loop
-                    mcp_tools = mcp_manager.list_all_tools()
-                    if asyncio.iscoroutine(mcp_tools):
-                        try:
-                            loop = asyncio.get_event_loop()
-                            if loop.is_closed():
-                                loop = asyncio.new_event_loop()
-                                asyncio.set_event_loop(loop)
-                        except RuntimeError:
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                        mcp_tools = loop.run_until_complete(mcp_tools)
-
-                mcp_count = 0
-                for tool in mcp_tools:
-                    tools.append({
-                        'name': tool.get('name', 'unknown'),
-                        'description': tool.get('description', 'No description available'),
-                        'source': tool.get('server', 'mcp')
-                    })
-                    mcp_count += 1
-                logger.debug(f"Loaded {mcp_count} MCP tools")
-            else:
-                logger.warning("MCP manager does not have list_all_tools method")
-                errors.append("MCP manager missing list_all_tools method")
-        except Exception as e:
-            logger.warning(f"Failed to get MCP tools: {e}", exc_info=True)
-            errors.append(f"MCP tools error: {e}")
-    else:
+def _collect_mcp_tools(
+    tools: List[Dict[str, Any]],
+    errors: List[str],
+    mcp_manager
+) -> None:
+    """Collect tools from the MCP manager, handling async resolution."""
+    if not mcp_manager:
         logger.debug("No MCP manager provided")
+        return
 
-    result = {
-        'tools': tools,
-        'count': len(tools),
-        'message': f"Found {len(tools)} available tools"
-    }
+    logger.debug(f"MCP manager present: {type(mcp_manager)}")
 
-    if errors:
-        result['warnings'] = errors
+    if not hasattr(mcp_manager, 'list_all_tools'):
+        logger.warning("MCP manager does not have list_all_tools method")
+        errors.append("MCP manager missing list_all_tools method")
+        return
 
-    return result
+    try:
+        mcp_tools = _resolve_mcp_tools(mcp_manager)
+        mcp_count = 0
+        for tool in mcp_tools:
+            tools.append({
+                'name': tool.get('name', 'unknown'),
+                'description': tool.get('description', 'No description available'),
+                'source': tool.get('server', 'mcp')
+            })
+            mcp_count += 1
+        logger.debug(f"Loaded {mcp_count} MCP tools")
+    except Exception as e:
+        logger.warning(f"Failed to get MCP tools: {e}", exc_info=True)
+        errors.append(f"MCP tools error: {e}")
+
+
+def _resolve_mcp_tools(mcp_manager) -> list:
+    """Resolve MCP tools, handling both sync and async code paths."""
+    loop = getattr(mcp_manager, '_initialization_loop', None)
+
+    if loop and not loop.is_closed():
+        return loop.run_until_complete(mcp_manager.list_all_tools())
+
+    mcp_tools = mcp_manager.list_all_tools()
+    if asyncio.iscoroutine(mcp_tools):
+        loop = _get_or_create_event_loop()
+        mcp_tools = loop.run_until_complete(mcp_tools)
+    return mcp_tools
+
+
+def _get_or_create_event_loop() -> asyncio.AbstractEventLoop:
+    """Return an open event loop, creating one if necessary."""
+    try:
+        loop = asyncio.get_event_loop()
+        if not loop.is_closed():
+            return loop
+    except RuntimeError:
+        pass
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    return loop
 
 
 def _validate_schedule(schedule_type: str, schedule_value: str) -> Dict[str, Any]:
@@ -345,87 +370,117 @@ def _validate_schedule(schedule_type: str, schedule_value: str) -> Dict[str, Any
         return {'valid': False, 'error': 'schedule_value is required'}
 
     if schedule_type == 'one_off':
-        try:
-            # Try multiple datetime formats
-            dt = None
-            formats = ['%Y-%m-%d %H:%M', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M', '%Y-%m-%dT%H:%M:%S']
-            for fmt in formats:
-                try:
-                    dt = datetime.strptime(schedule_value, fmt)
-                    break
-                except ValueError:
-                    continue
+        return _validate_one_off_schedule(schedule_value)
 
-            if dt is None:
-                return {
-                    'valid': False,
-                    'error': f'Invalid datetime format. Use YYYY-MM-DD HH:MM (e.g., "2025-12-20 14:30")'
-                }
+    if schedule_type == 'recurring':
+        return _validate_recurring_schedule(schedule_value)
 
-            if dt <= datetime.now():
-                return {
-                    'valid': False,
-                    'error': 'Date must be in the future'
-                }
+    return {
+        'valid': False,
+        'error': f'Unknown schedule type: {schedule_type}. Use "one_off" or "recurring"'
+    }
 
-            return {
-                'valid': True,
-                'schedule_type': 'one_off',
-                'parsed': dt.isoformat(),
-                'human_readable': dt.strftime('%A, %d %B %Y at %H:%M')
-            }
 
-        except Exception as e:
-            return {'valid': False, 'error': f'Invalid datetime: {e}'}
+def _validate_one_off_schedule(schedule_value: str) -> Dict[str, Any]:
+    """Validate a one-off (single execution) schedule value."""
+    try:
+        dt = _parse_datetime(schedule_value)
 
-    elif schedule_type == 'recurring':
-        try:
-            from apscheduler.triggers.cron import CronTrigger
-
-            # Parse cron expression
-            parts = schedule_value.split()
-            if len(parts) != 5:
-                return {
-                    'valid': False,
-                    'error': (
-                        'Cron expression must have 5 fields: minute hour day month day_of_week. '
-                        'Example: "0 8 * * MON-FRI" for weekdays at 8am'
-                    )
-                }
-
-            minute, hour, day, month, dow = parts
-
-            # Validate by creating trigger (will raise if invalid)
-            trigger = CronTrigger(
-                minute=minute,
-                hour=hour,
-                day=day,
-                month=month,
-                day_of_week=dow
-            )
-
-            # Get next run time to confirm it works
-            next_run = trigger.get_next_fire_time(None, datetime.now())
-
-            return {
-                'valid': True,
-                'schedule_type': 'recurring',
-                'cron_expression': schedule_value,
-                'human_readable': _cron_to_human(schedule_value),
-                'next_run': next_run.isoformat() if next_run else None
-            }
-
-        except Exception as e:
+        if dt is None:
             return {
                 'valid': False,
-                'error': f'Invalid cron expression: {e}'
+                'error': 'Invalid datetime format. Use YYYY-MM-DD HH:MM (e.g., "2025-12-20 14:30")'
             }
 
-    else:
+        if dt <= datetime.now():
+            return {
+                'valid': False,
+                'error': 'Date must be in the future'
+            }
+
+        return {
+            'valid': True,
+            'schedule_type': 'one_off',
+            'parsed': dt.isoformat(),
+            'human_readable': dt.strftime('%A, %d %B %Y at %H:%M')
+        }
+
+    except Exception as e:
+        return {'valid': False, 'error': f'Invalid datetime: {e}'}
+
+
+def _parse_datetime(value: str) -> Optional[datetime]:
+    """Attempt to parse a datetime string using common formats."""
+    formats = ['%Y-%m-%d %H:%M', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M', '%Y-%m-%dT%H:%M:%S']
+    for fmt in formats:
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _validate_recurring_schedule(schedule_value: str) -> Dict[str, Any]:
+    """Validate a recurring (cron-based) schedule value."""
+    try:
+        from apscheduler.triggers.cron import CronTrigger
+
+        parts = schedule_value.split()
+        if len(parts) != 5:
+            return {
+                'valid': False,
+                'error': (
+                    'Cron expression must have 5 fields: minute hour day month day_of_week. '
+                    'Example: "0 8 * * MON-FRI" for weekdays at 8am'
+                )
+            }
+
+        minute, hour, day, month, dow = parts
+
+        trigger = CronTrigger(
+            minute=minute,
+            hour=hour,
+            day=day,
+            month=month,
+            day_of_week=dow
+        )
+
+        next_run = trigger.get_next_fire_time(None, datetime.now())
+
+        return {
+            'valid': True,
+            'schedule_type': 'recurring',
+            'cron_expression': schedule_value,
+            'human_readable': _cron_to_human(schedule_value),
+            'next_run': next_run.isoformat() if next_run else None
+        }
+
+    except Exception as e:
         return {
             'valid': False,
-            'error': f'Unknown schedule type: {schedule_type}. Use "one_off" or "recurring"'
+            'error': f'Invalid cron expression: {e}'
         }
+
+
+# Mapping of day-of-week values to human-readable names.
+_DOW_MAP = {
+    'MON-FRI': 'Weekdays (Monday to Friday)',
+    '1-5': 'Weekdays (Monday to Friday)',
+    'SAT,SUN': 'Weekends',
+    '0,6': 'Weekends',
+    '6,0': 'Weekends',
+}
+
+# Single-day mappings (value or uppercase alias -> label).
+_SINGLE_DOW_MAP = {
+    '0': 'Every Sunday',   'SUN': 'Every Sunday',
+    '1': 'Every Monday',   'MON': 'Every Monday',
+    '2': 'Every Tuesday',  'TUE': 'Every Tuesday',
+    '3': 'Every Wednesday', 'WED': 'Every Wednesday',
+    '4': 'Every Thursday',  'THU': 'Every Thursday',
+    '5': 'Every Friday',   'FRI': 'Every Friday',
+    '6': 'Every Saturday',  'SAT': 'Every Saturday',
+}
 
 
 def _cron_to_human(cron: str) -> str:
@@ -444,47 +499,62 @@ def _cron_to_human(cron: str) -> str:
 
     minute, hour, day, month, dow = parts
 
-    # Build time string
-    if minute == '0':
-        time_str = f"{hour}:00"
-    elif minute.isdigit():
-        time_str = f"{hour}:{minute.zfill(2)}"
-    else:
-        time_str = f"{hour}:{minute}"
+    time_str = _format_cron_time(minute, hour)
+    freq = _describe_cron_frequency(minute, hour, day, month, dow)
 
-    # Build day/frequency description
-    if dow == '*' and day == '*' and month == '*':
-        freq = "Every day"
-    elif dow == 'MON-FRI' or dow == '1-5':
-        freq = "Weekdays (Monday to Friday)"
-    elif dow == 'SAT,SUN' or dow == '0,6' or dow == '6,0':
-        freq = "Weekends"
-    elif dow == '0' or dow.upper() == 'SUN':
-        freq = "Every Sunday"
-    elif dow == '1' or dow.upper() == 'MON':
-        freq = "Every Monday"
-    elif dow == '2' or dow.upper() == 'TUE':
-        freq = "Every Tuesday"
-    elif dow == '3' or dow.upper() == 'WED':
-        freq = "Every Wednesday"
-    elif dow == '4' or dow.upper() == 'THU':
-        freq = "Every Thursday"
-    elif dow == '5' or dow.upper() == 'FRI':
-        freq = "Every Friday"
-    elif dow == '6' or dow.upper() == 'SAT':
-        freq = "Every Saturday"
-    elif day != '*' and month == '*':
-        freq = f"Day {day} of each month"
-    elif '/' in minute:
-        interval = minute.split('/')[1]
-        return f"Every {interval} minutes"
-    elif '/' in hour:
-        interval = hour.split('/')[1]
-        return f"Every {interval} hours"
-    else:
+    if freq is None:
         return f"Cron: {cron}"
 
+    # Interval-based frequencies already include timing info
+    if freq.startswith("Every ") and ("minutes" in freq or "hours" in freq):
+        return freq
+
     return f"{freq} at {time_str}"
+
+
+def _format_cron_time(minute: str, hour: str) -> str:
+    """Build a human-readable time string from cron minute and hour fields."""
+    if minute == '0':
+        return f"{hour}:00"
+    if minute.isdigit():
+        return f"{hour}:{minute.zfill(2)}"
+    return f"{hour}:{minute}"
+
+
+def _describe_cron_frequency(
+    minute: str, hour: str, day: str, month: str, dow: str
+) -> Optional[str]:
+    """
+    Derive a human-readable frequency description from cron fields.
+
+    Returns None when no known pattern matches.
+    """
+    # Every day
+    if dow == '*' and day == '*' and month == '*':
+        return "Every day"
+
+    # Multi-day patterns (weekdays, weekends)
+    if dow in _DOW_MAP:
+        return _DOW_MAP[dow]
+
+    # Single named/numbered day of week
+    dow_label = _SINGLE_DOW_MAP.get(dow) or _SINGLE_DOW_MAP.get(dow.upper())
+    if dow_label:
+        return dow_label
+
+    # Day-of-month pattern
+    if day != '*' and month == '*':
+        return f"Day {day} of each month"
+
+    # Interval-based patterns
+    if '/' in minute:
+        interval = minute.split('/')[1]
+        return f"Every {interval} minutes"
+    if '/' in hour:
+        interval = hour.split('/')[1]
+        return f"Every {interval} hours"
+
+    return None
 
 
 def _create_action(
@@ -532,13 +602,8 @@ def _create_action(
                 'error': f'An action named "{params["name"]}" already exists'
             }
 
-        # Combine system_prompt with action_prompt for storage
-        # The system_prompt becomes the instructions, action_prompt is the actual task
-        full_prompt = params['action_prompt']
-        if params.get('system_prompt'):
-            full_prompt = f"[System Instructions]\n{params['system_prompt']}\n\n[Task]\n{params['action_prompt']}"
+        full_prompt = _build_full_prompt(params)
 
-        # Create action using database wrapper method
         action_id = database.create_action(
             name=params['name'],
             description=params['description'],
@@ -551,36 +616,16 @@ def _create_action(
             max_tokens=params.get('max_tokens', 8192)
         )
 
-        # Set tool permissions using database wrapper method
-        tool_names = params.get('tool_names', [])
-        if tool_names:
-            tool_permissions = [
-                {
-                    'tool_name': t,
-                    'server_name': None,
-                    'permission_state': 'allowed'
-                }
-                for t in tool_names
-            ]
-            database.set_action_tool_permissions_batch(action_id, tool_permissions)
+        _set_tool_permissions(database, action_id, params.get('tool_names', []))
 
-        # Schedule the action
-        next_run = None
-        if scheduler_manager:
-            try:
-                scheduler_manager.schedule_action(
-                    action_id=action_id,
-                    action_name=params['name'],
-                    schedule_type=params['schedule_type'],
-                    schedule_config=schedule_config,
-                    user_guid=user_guid
-                )
-                next_run = scheduler_manager.get_next_run_time(action_id)
-            except Exception as e:
-                logger.warning(f"Failed to schedule action: {e}")
+        next_run = _schedule_action(scheduler_manager, action_id, params, schedule_config, user_guid)
 
         # Build success message
-        schedule_desc = _cron_to_human(params['schedule_value']) if params['schedule_type'] == 'recurring' else params['schedule_value']
+        schedule_desc = (
+            _cron_to_human(params['schedule_value'])
+            if params['schedule_type'] == 'recurring'
+            else params['schedule_value']
+        )
 
         return {
             'success': True,
@@ -597,3 +642,50 @@ def _create_action(
             'success': False,
             'error': str(e)
         }
+
+
+def _build_full_prompt(params: Dict[str, Any]) -> str:
+    """Combine system_prompt and action_prompt into a single prompt for storage."""
+    full_prompt = params['action_prompt']
+    if params.get('system_prompt'):
+        full_prompt = f"[System Instructions]\n{params['system_prompt']}\n\n[Task]\n{params['action_prompt']}"
+    return full_prompt
+
+
+def _set_tool_permissions(database, action_id: str, tool_names: List[str]) -> None:
+    """Set tool permissions for the newly created action."""
+    if not tool_names:
+        return
+    tool_permissions = [
+        {
+            'tool_name': t,
+            'server_name': None,
+            'permission_state': 'allowed'
+        }
+        for t in tool_names
+    ]
+    database.set_action_tool_permissions_batch(action_id, tool_permissions)
+
+
+def _schedule_action(
+    scheduler_manager,
+    action_id: str,
+    params: Dict[str, Any],
+    schedule_config: Dict[str, Any],
+    user_guid: str
+):
+    """Schedule the action and return the next run time, or None on failure."""
+    if not scheduler_manager:
+        return None
+    try:
+        scheduler_manager.schedule_action(
+            action_id=action_id,
+            action_name=params['name'],
+            schedule_type=params['schedule_type'],
+            schedule_config=schedule_config,
+            user_guid=user_guid
+        )
+        return scheduler_manager.get_next_run_time(action_id)
+    except Exception as e:
+        logger.warning(f"Failed to schedule action: {e}")
+        return None

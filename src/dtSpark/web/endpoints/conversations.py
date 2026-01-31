@@ -37,7 +37,7 @@ def parse_datetime(dt_value):
         # SQLite returns timestamps as strings
         try:
             return datetime.fromisoformat(dt_value.replace('Z', '+00:00'))
-        except:
+        except (ValueError, TypeError):
             return datetime.strptime(dt_value, '%Y-%m-%d %H:%M:%S.%f')
     return None
 
@@ -216,11 +216,14 @@ async def create_conversation(
                         logger.warning("Received file upload without filename")
                         continue
 
+                    # Sanitise filename for safe logging (prevent log injection)
+                    safe_filename = upload_file.filename.replace('\n', '').replace('\r', '')
+
                     # Extract file extension
                     suffix = os.path.splitext(upload_file.filename)[1]
                     if not suffix:
                         upload_errors.append(f"File '{upload_file.filename}' has no file extension")
-                        logger.warning(f"File '{upload_file.filename}' uploaded without extension")
+                        logger.warning("File '%s' uploaded without extension", safe_filename)
                         continue
 
                     # Check if extension is supported (using FileManager's validation)
@@ -230,19 +233,20 @@ async def create_conversation(
                                              FileManager.SUPPORTED_DOCUMENT_FILES |
                                              FileManager.SUPPORTED_IMAGE_FILES):
                         upload_errors.append(f"File type '{suffix}' is not supported for '{upload_file.filename}'")
-                        logger.warning(f"Unsupported file type '{suffix}' for file '{upload_file.filename}'")
+                        logger.warning("Unsupported file type '%s' for file '%s'", suffix, safe_filename)
                         continue
 
                     # Create temporary file with proper extension
                     temp_fd, temp_path = tempfile.mkstemp(suffix=suffix)
+                    os.close(temp_fd)
 
                     # Write uploaded content to temp file
-                    with os.fdopen(temp_fd, 'wb') as f:
-                        content = await upload_file.read()
+                    content = await upload_file.read()
+                    with open(temp_path, 'wb') as f:
                         f.write(content)
 
                     temp_files.append(temp_path)
-                    logger.info(f"Saved uploaded file {upload_file.filename} to {temp_path}")
+                    logger.info("Saved uploaded file '%s' to %s", safe_filename, temp_path)
 
                 # Attach files using conversation manager
                 if temp_files:
@@ -265,7 +269,7 @@ async def create_conversation(
                     try:
                         if os.path.exists(temp_path):
                             os.unlink(temp_path)
-                    except:
+                    except OSError:
                         pass
 
         # Get the created conversation details

@@ -123,20 +123,48 @@ class ActionContextCompactor:
         """
         total = 0
         for msg in messages:
-            content = msg.get('content', '')
-            if isinstance(content, str):
-                # Rough estimate: ~4 chars per token
-                total += len(content) // 4
-            elif isinstance(content, list):
-                # Content blocks
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get('type') == 'text':
-                            total += len(block.get('text', '')) // 4
-                        elif block.get('type') == 'tool_use':
-                            total += len(json.dumps(block.get('input', {}))) // 4
-                        elif block.get('type') == 'tool_result':
-                            total += len(str(block.get('content', ''))) // 4
+            total += self._estimate_message_tokens(msg)
+        return total
+
+    def _estimate_message_tokens(self, msg: Dict) -> int:
+        """
+        Estimate token count for a single message.
+
+        Args:
+            msg: Message dictionary
+
+        Returns:
+            Estimated token count
+        """
+        content = msg.get('content', '')
+        if isinstance(content, str):
+            # Rough estimate: ~4 chars per token
+            return len(content) // 4
+        if isinstance(content, list):
+            return self._estimate_content_blocks_tokens(content)
+        return 0
+
+    def _estimate_content_blocks_tokens(self, blocks: list) -> int:
+        """
+        Estimate token count for a list of content blocks.
+
+        Args:
+            blocks: List of content block dictionaries
+
+        Returns:
+            Estimated token count
+        """
+        total = 0
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            block_type = block.get('type')
+            if block_type == 'text':
+                total += len(block.get('text', '')) // 4
+            elif block_type == 'tool_use':
+                total += len(json.dumps(block.get('input', {}))) // 4
+            elif block_type == 'tool_result':
+                total += len(str(block.get('content', ''))) // 4
         return total
 
     def _check_rate_limits(self, prompt: str) -> Dict[str, Any]:
@@ -249,8 +277,9 @@ class ActionContextCompactor:
             compacted_tokens = len(compacted_content) // 4
             reduction = ((current_tokens - compacted_tokens) / current_tokens * 100) if current_tokens > 0 else 0
 
+            reduction_str = f"{reduction:.1f}% reduction"
             logging.info(f"Action compaction: {len(messages)} messages → 1 summary, "
-                        f"{current_tokens:,} → {compacted_tokens:,} tokens ({reduction:.1f}% reduction)")
+                        f"{current_tokens:,} → {compacted_tokens:,} tokens ({reduction_str})")
 
             # Return compacted context as single user message
             return [{
@@ -273,35 +302,64 @@ class ActionContextCompactor:
             Formatted string
         """
         lines = []
-        for i, msg in enumerate(messages):
+        for msg in messages:
             role = msg.get('role', 'unknown').upper()
             content = msg.get('content', '')
-
-            if isinstance(content, str):
-                # Truncate long messages
-                if len(content) > 1500:
-                    content = content[:1500] + f"... [truncated, {len(content) - 1500} more chars]"
-                lines.append(f"[{role}]: {content}")
-            elif isinstance(content, list):
-                # Handle content blocks
-                parts = []
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get('type') == 'text':
-                            text = block.get('text', '')
-                            if len(text) > 500:
-                                text = text[:500] + "..."
-                            parts.append(text)
-                        elif block.get('type') == 'tool_use':
-                            parts.append(f"[Tool: {block.get('name', 'unknown')}]")
-                        elif block.get('type') == 'tool_result':
-                            result = str(block.get('content', ''))
-                            if len(result) > 300:
-                                result = result[:300] + "..."
-                            parts.append(f"[Result: {result}]")
-                lines.append(f"[{role}]: {' | '.join(parts)}")
+            formatted = self._format_single_message_content(role, content)
+            if formatted:
+                lines.append(formatted)
 
         return '\n\n'.join(lines)
+
+    def _format_single_message_content(self, role: str, content) -> str:
+        """
+        Format content of a single message for compaction.
+
+        Args:
+            role: Message role (uppercased)
+            content: Message content (string or list of blocks)
+
+        Returns:
+            Formatted string for this message
+        """
+        if isinstance(content, str):
+            if len(content) > 1500:
+                content = content[:1500] + f"... [truncated, {len(content) - 1500} more chars]"
+            return f"[{role}]: {content}"
+
+        if isinstance(content, list):
+            parts = [self._format_content_block(block) for block in content
+                     if isinstance(block, dict)]
+            parts = [p for p in parts if p]
+            return f"[{role}]: {' | '.join(parts)}"
+
+        return ''
+
+    @staticmethod
+    def _format_content_block(block: Dict) -> Optional[str]:
+        """
+        Format a single content block for compaction output.
+
+        Args:
+            block: Content block dictionary
+
+        Returns:
+            Formatted string or None
+        """
+        block_type = block.get('type')
+        if block_type == 'text':
+            text = block.get('text', '')
+            if len(text) > 500:
+                text = text[:500] + "..."
+            return text
+        if block_type == 'tool_use':
+            return f"[Tool: {block.get('name', 'unknown')}]"
+        if block_type == 'tool_result':
+            result = str(block.get('content', ''))
+            if len(result) > 300:
+                result = result[:300] + "..."
+            return f"[Result: {result}]"
+        return None
 
 
 class ActionExecutor:
@@ -351,13 +409,13 @@ class ActionExecutor:
 
         logging.info("ActionExecutor initialised with context compaction support")
 
-    def execute(self, action_id: int, user_guid: str, is_manual: bool = False) -> Dict[str, Any]:
+    def execute(self, action_id: int, _user_guid: str, is_manual: bool = False) -> Dict[str, Any]:
         """
         Execute an autonomous action.
 
         Args:
             action_id: ID of the action to execute
-            user_guid: User GUID for database operations
+            _user_guid: User GUID (reserved for future use)
             is_manual: Whether this is a manual "Run Now" execution
 
         Returns:
@@ -445,45 +503,88 @@ class ActionExecutor:
                 'error': error_message
             }
 
-    def _execute_action(self, action: Dict, is_manual: bool) -> Dict[str, Any]:
+    def _execute_action(self, action: Dict, _is_manual: bool = False) -> Dict[str, Any]:
         """
         Execute the actual LLM invocation for an action.
 
         Args:
             action: Action dictionary
-            is_manual: Whether this is a manual execution
+            _is_manual: Whether this is a manual execution (reserved for future use)
 
         Returns:
             Dict with 'text', 'html', 'input_tokens', 'output_tokens', 'context_snapshot'
         """
-        # Set the model
         model_id = action['model_id']
+        self._set_action_model(model_id)
+
+        # Prepare context, tools, system prompt, and max tokens
+        messages = self._prepare_context(action)
+        tools = self._get_filtered_tools(action['id'])
+        system_prompt = self._build_system_prompt(action)
+        action_max_tokens = action.get('max_tokens', 8192)
+
+        # Initial model invocation
+        response = self._invoke_initial_model(
+            action, messages, action_max_tokens, tools, system_prompt
+        )
+
+        # Run the tool use loop
+        loop_result = self._run_tool_loop(
+            action, model_id, messages, response,
+            action_max_tokens, tools, system_prompt
+        )
+
+        # Assemble final result
+        return self._assemble_action_result(
+            action, loop_result['messages'], loop_result['response'],
+            loop_result['all_text_responses'], loop_result['tool_calls_summary'],
+            loop_result['compaction_count']
+        )
+
+    def _set_action_model(self, model_id: str) -> None:
+        """
+        Set the LLM model for action execution.
+
+        Args:
+            model_id: Model identifier to set
+
+        Raises:
+            RuntimeError: If model cannot be set
+        """
         try:
             self.llm_manager.set_model(model_id)
         except Exception as e:
-            # Log available models to help diagnose the issue
-            try:
-                available = self.llm_manager.list_all_models()
-                available_ids = [m.get('id', 'unknown') for m in available]
-                logging.error(f"Available models: {available_ids}")
-            except Exception as list_err:
-                logging.error(f"Failed to list available models: {list_err}")
+            self._log_available_models()
             raise RuntimeError(f"Failed to set model {model_id}: {e}")
 
-        # Prepare context based on context_mode
-        messages = self._prepare_context(action)
+    def _log_available_models(self) -> None:
+        """Log available models for diagnostic purposes."""
+        try:
+            available = self.llm_manager.list_all_models()
+            available_ids = [m.get('id', 'unknown') for m in available]
+            logging.error(f"Available models: {available_ids}")
+        except Exception as list_err:
+            logging.error(f"Failed to list available models: {list_err}")
 
-        # Get filtered tools based on action permissions
-        tools = self._get_filtered_tools(action['id'])
+    def _invoke_initial_model(self, action: Dict, messages: List[Dict],
+                              action_max_tokens: int, tools: Optional[List[Dict]],
+                              system_prompt: str) -> Dict:
+        """
+        Perform the initial model invocation and validate the response.
 
-        # Prepare system prompt
-        system_prompt = self._build_system_prompt(action)
+        Args:
+            action: Action dictionary
+            messages: Prepared message context
+            action_max_tokens: Maximum tokens for output
+            tools: Filtered tool definitions
+            system_prompt: System prompt string
 
-        # Get configured max_tokens for this action (default 8192)
-        action_max_tokens = action.get('max_tokens', 8192)
+        Returns:
+            Validated model response dictionary
 
-        # Invoke the model
-        start_time = time.time()
+        Raises:
+            RuntimeError: If no response or LLM returns an error
+        """
         response = self.llm_manager.invoke_model(
             messages=messages,
             max_tokens=action_max_tokens,
@@ -491,7 +592,6 @@ class ActionExecutor:
             tools=tools if tools else None,
             system=system_prompt
         )
-        elapsed_time = time.time() - start_time
 
         if not response:
             raise RuntimeError("No response from LLM")
@@ -501,7 +601,6 @@ class ActionExecutor:
                 f"LLM error: {response.get('error_message', 'Unknown error')}"
             )
 
-        # Log response details for debugging token limit issues
         stop_reason = response.get('stop_reason', 'unknown')
         usage = response.get('usage', {})
         output_tokens = usage.get('output_tokens', 0)
@@ -509,25 +608,39 @@ class ActionExecutor:
             f"Action {action['id']} initial response: stop_reason={stop_reason}, "
             f"output_tokens={output_tokens}, max_tokens={action_max_tokens}"
         )
+        return response
 
-        # Handle tool calls in a loop until LLM stops requesting tools
-        # Note: Bedrock returns 'content' as text string, 'content_blocks' as list
-        # Get max iterations from action settings, config, or default to 25
+    def _run_tool_loop(self, action: Dict, model_id: str,
+                       messages: List[Dict], response: Dict,
+                       action_max_tokens: int, tools: Optional[List[Dict]],
+                       system_prompt: str) -> Dict[str, Any]:
+        """
+        Run the tool use loop until the LLM stops requesting tools.
+
+        Args:
+            action: Action dictionary
+            model_id: Model identifier (for context window lookup)
+            messages: Current message list
+            response: Initial model response
+            action_max_tokens: Maximum tokens for output
+            tools: Filtered tool definitions
+            system_prompt: System prompt string
+
+        Returns:
+            Dict with 'messages', 'response', 'all_text_responses',
+            'tool_calls_summary', 'compaction_count'
+        """
         max_tool_iterations = action.get('max_tool_iterations', None)
         if max_tool_iterations is None:
             max_tool_iterations = self.config.get('conversation', {}).get('max_tool_iterations', 25)
         logging.debug(f"Action {action['id']} max tool iterations: {max_tool_iterations}")
-        iteration = 0
 
-        # Accumulate all text responses and track tool calls
         all_text_responses = []
         tool_calls_summary = []
         compaction_count = 0
-
-        # Get context window for compaction checks
         context_window = self._get_context_window(model_id)
+        iteration = 0
 
-        # Extract any text from initial response
         initial_text = self._extract_text_response(response)
         if initial_text:
             all_text_responses.append(initial_text)
@@ -537,7 +650,6 @@ class ActionExecutor:
             tool_use_blocks = [b for b in content_blocks if b.get('type') == 'tool_use']
 
             if not tool_use_blocks:
-                # No more tool calls - we're done
                 break
 
             iteration += 1
@@ -551,73 +663,137 @@ class ActionExecutor:
                     'input': block.get('input', {})
                 })
 
-            # Execute tool calls (uses self._tool_sources for routing)
+            # Execute tool calls and add results to messages
             tool_results = self._execute_tool_calls(action['id'], tool_use_blocks)
-
-            # Add tool results to messages and get next response
             messages = self._add_tool_results(messages, response, tool_results)
 
-            # Check for context compaction every few iterations
-            if iteration % 3 == 0 and context_window > 0:
-                messages, compacted = self.context_compactor.check_and_compact(
-                    messages=messages,
-                    original_prompt=action['action_prompt'],
-                    context_window=context_window,
-                    in_tool_loop=True
-                )
-                if compacted:
-                    compaction_count += 1
-                    logging.info(f"Action {action['id']} context compacted (compaction #{compaction_count})")
-
-            response = self.llm_manager.invoke_model(
-                messages=messages,
-                max_tokens=action_max_tokens,
-                temperature=0.7,
-                tools=tools if tools else None,
-                system=system_prompt
+            # Periodic context compaction
+            messages, compaction_count = self._maybe_compact_context(
+                action, messages, iteration, context_window, compaction_count
             )
 
-            if response.get('error'):
-                raise RuntimeError(
-                    f"LLM error during tool iteration: {response.get('error_message', 'Unknown error')}"
-                )
+            # Next model invocation
+            response = self._invoke_tool_iteration(
+                action, messages, action_max_tokens, tools, system_prompt, iteration
+            )
 
-            # Extract and accumulate text from this iteration
             iter_text = self._extract_text_response(response)
             if iter_text:
                 all_text_responses.append(iter_text)
 
-            # Log iteration response details
-            iter_stop_reason = response.get('stop_reason', 'unknown')
-            iter_usage = response.get('usage', {})
-            iter_output_tokens = iter_usage.get('output_tokens', 0)
-            logging.debug(
-                f"Action {action['id']} iteration {iteration} response: "
-                f"stop_reason={iter_stop_reason}, output_tokens={iter_output_tokens}"
-            )
-
         if iteration >= max_tool_iterations:
             logging.warning(f"Action {action['id']} reached max tool iterations ({max_tool_iterations})")
-            # Add warning to output
             all_text_responses.append(
                 f"\n\n---\n**Note:** Action reached maximum tool iterations ({max_tool_iterations}). "
                 f"The task may be incomplete. Consider increasing max_tool_iterations in config."
             )
 
-        # Combine all text responses
+        return {
+            'messages': messages,
+            'response': response,
+            'all_text_responses': all_text_responses,
+            'tool_calls_summary': tool_calls_summary,
+            'compaction_count': compaction_count
+        }
+
+    def _maybe_compact_context(self, action: Dict, messages: List[Dict],
+                               iteration: int, context_window: int,
+                               compaction_count: int) -> Tuple[List[Dict], int]:
+        """
+        Check and perform context compaction if needed.
+
+        Args:
+            action: Action dictionary
+            messages: Current message list
+            iteration: Current tool iteration number
+            context_window: Model context window size
+            compaction_count: Running count of compactions performed
+
+        Returns:
+            Tuple of (possibly compacted messages, updated compaction count)
+        """
+        if iteration % 3 != 0 or context_window <= 0:
+            return messages, compaction_count
+
+        messages, compacted = self.context_compactor.check_and_compact(
+            messages=messages,
+            original_prompt=action['action_prompt'],
+            context_window=context_window,
+            in_tool_loop=True
+        )
+        if compacted:
+            compaction_count += 1
+            logging.info(f"Action {action['id']} context compacted (compaction #{compaction_count})")
+
+        return messages, compaction_count
+
+    def _invoke_tool_iteration(self, action: Dict, messages: List[Dict],
+                               action_max_tokens: int, tools: Optional[List[Dict]],
+                               system_prompt: str, iteration: int) -> Dict:
+        """
+        Invoke the model during a tool use iteration.
+
+        Args:
+            action: Action dictionary
+            messages: Current message list
+            action_max_tokens: Maximum tokens for output
+            tools: Filtered tool definitions
+            system_prompt: System prompt string
+            iteration: Current iteration number
+
+        Returns:
+            Model response dictionary
+
+        Raises:
+            RuntimeError: If the model returns an error
+        """
+        response = self.llm_manager.invoke_model(
+            messages=messages,
+            max_tokens=action_max_tokens,
+            temperature=0.7,
+            tools=tools if tools else None,
+            system=system_prompt
+        )
+
+        if response.get('error'):
+            raise RuntimeError(
+                f"LLM error during tool iteration: {response.get('error_message', 'Unknown error')}"
+            )
+
+        iter_stop_reason = response.get('stop_reason', 'unknown')
+        iter_usage = response.get('usage', {})
+        iter_output_tokens = iter_usage.get('output_tokens', 0)
+        logging.debug(
+            f"Action {action['id']} iteration {iteration} response: "
+            f"stop_reason={iter_stop_reason}, output_tokens={iter_output_tokens}"
+        )
+        return response
+
+    def _assemble_action_result(self, action: Dict, messages: List[Dict],
+                                response: Dict, all_text_responses: List[str],
+                                tool_calls_summary: List[Dict],
+                                compaction_count: int) -> Dict[str, Any]:
+        """
+        Assemble the final action result from accumulated data.
+
+        Args:
+            action: Action dictionary
+            messages: Final message list
+            response: Final model response
+            all_text_responses: Accumulated text responses
+            tool_calls_summary: Summary of tool calls made
+            compaction_count: Number of compactions performed
+
+        Returns:
+            Dict with 'text', 'html', 'input_tokens', 'output_tokens', 'context_snapshot'
+        """
         text_response = '\n\n'.join(all_text_responses) if all_text_responses else ''
 
-        # Add execution summary
-        summary_parts = []
-        if tool_calls_summary:
-            tools_used = set(tc['tool'] for tc in tool_calls_summary)
-            summary_parts.append(f"**Tools used ({len(tool_calls_summary)} calls):** {', '.join(sorted(tools_used))}")
-        if compaction_count > 0:
-            summary_parts.append(f"**Context compactions:** {compaction_count}")
-        if summary_parts:
-            text_response += "\n\n---\n" + " | ".join(summary_parts)
+        # Build execution summary
+        text_response = self._append_execution_summary(
+            text_response, tool_calls_summary, compaction_count
+        )
 
-        # Convert to HTML
         html_response = self._convert_to_html(text_response)
 
         # Update cumulative context if needed
@@ -626,9 +802,7 @@ class ActionExecutor:
             self._update_cumulative_context(action['id'], messages, response)
             context_snapshot = json.dumps(self._cumulative_contexts.get(action['id'], []))
 
-        # Get token usage
         usage = response.get('usage', {})
-
         return {
             'text': text_response,
             'html': html_response,
@@ -636,6 +810,32 @@ class ActionExecutor:
             'output_tokens': usage.get('output_tokens', 0),
             'context_snapshot': context_snapshot
         }
+
+    @staticmethod
+    def _append_execution_summary(text_response: str, tool_calls_summary: List[Dict],
+                                  compaction_count: int) -> str:
+        """
+        Append execution summary to the text response.
+
+        Args:
+            text_response: Current text response
+            tool_calls_summary: Summary of tool calls made
+            compaction_count: Number of compactions performed
+
+        Returns:
+            Text response with summary appended
+        """
+        summary_parts = []
+        if tool_calls_summary:
+            tools_used = set(tc['tool'] for tc in tool_calls_summary)
+            summary_parts.append(
+                f"**Tools used ({len(tool_calls_summary)} calls):** {', '.join(sorted(tools_used))}"
+            )
+        if compaction_count > 0:
+            summary_parts.append(f"**Context compactions:** {compaction_count}")
+        if summary_parts:
+            text_response += "\n\n---\n" + " | ".join(summary_parts)
+        return text_response
 
     def _prepare_context(self, action: Dict) -> List[Dict]:
         """
@@ -755,116 +955,198 @@ class ActionExecutor:
         Returns:
             List of tool result dictionaries
         """
-        from dtSpark.tools import builtin
-
         results = []
-
-        # Get tool sources from instance (populated by _get_filtered_tools)
         tool_sources = getattr(self, '_tool_sources', {})
 
         for tool_block in tool_use_blocks:
-            tool_name = tool_block.get('name')
-            tool_id = tool_block.get('id')
-            tool_input = tool_block.get('input', {})
-
-            # Debug: log the full tool block for write_file issues
-            if tool_name == 'write_file':
-                logging.debug(f"write_file tool_block keys: {list(tool_block.keys())}")
-                logging.debug(f"write_file tool_input keys: {list(tool_input.keys()) if tool_input else 'None'}")
-                content_preview = str(tool_input.get('content', ''))[:100] if tool_input else ''
-                logging.debug(f"write_file content preview: '{content_preview}...' (len={len(tool_input.get('content', '') or '')})")
-
-            try:
-                # Check permission
-                permissions = self.database.get_action_tool_permissions(action_id)
-                allowed = any(
-                    p['tool_name'] == tool_name and p['permission_state'] == 'allowed'
-                    for p in permissions
-                )
-
-                if not allowed:
-                    results.append({
-                        'type': 'tool_result',
-                        'tool_use_id': tool_id,
-                        'content': f"Tool '{tool_name}' is not permitted for this action"
-                    })
-                    continue
-
-                # Determine tool source and execute accordingly
-                tool_source = tool_sources.get(tool_name, 'mcp')
-
-                if tool_source == 'builtin':
-                    # Execute builtin tool
-                    logging.debug(f"Executing builtin tool: {tool_name}")
-                    result = builtin.execute_builtin_tool(tool_name, tool_input, self.config)
-
-                    if result.get('success'):
-                        result_data = result.get('result', {})
-                        if isinstance(result_data, dict):
-                            result_str = json.dumps(result_data, indent=2)
-                        else:
-                            result_str = str(result_data)
-                        results.append({
-                            'type': 'tool_result',
-                            'tool_use_id': tool_id,
-                            'content': result_str
-                        })
-                    else:
-                        results.append({
-                            'type': 'tool_result',
-                            'tool_use_id': tool_id,
-                            'content': result.get('error', 'Builtin tool execution failed'),
-                            'is_error': True
-                        })
-
-                elif self.mcp_manager:
-                    # Execute MCP tool (async call)
-                    logging.debug(f"Executing MCP tool: {tool_name}")
-                    result = self._call_mcp_tool_sync(tool_name, tool_input)
-
-                    if result and not result.get('isError'):
-                        # Extract text content from result
-                        content_parts = []
-                        for content in result.get('content', []):
-                            if content.get('type') == 'text':
-                                content_parts.append(content.get('text', ''))
-
-                        result_str = '\n'.join(content_parts) if content_parts else 'Tool executed successfully (no output)'
-                        results.append({
-                            'type': 'tool_result',
-                            'tool_use_id': tool_id,
-                            'content': result_str
-                        })
-                    else:
-                        error_msg = "Tool execution failed"
-                        if result:
-                            for content in result.get('content', []):
-                                if content.get('type') == 'text':
-                                    error_msg = content.get('text', error_msg)
-                                    break
-                        results.append({
-                            'type': 'tool_result',
-                            'tool_use_id': tool_id,
-                            'content': error_msg,
-                            'is_error': True
-                        })
-                else:
-                    results.append({
-                        'type': 'tool_result',
-                        'tool_use_id': tool_id,
-                        'content': "No tool execution handler available"
-                    })
-
-            except Exception as e:
-                logging.error(f"Tool {tool_name} execution failed: {e}")
-                results.append({
-                    'type': 'tool_result',
-                    'tool_use_id': tool_id,
-                    'content': f"Error executing tool: {str(e)}",
-                    'is_error': True
-                })
+            result = self._execute_single_tool_call(
+                action_id, tool_block, tool_sources
+            )
+            results.append(result)
 
         return results
+
+    def _execute_single_tool_call(self, action_id: int, tool_block: Dict,
+                                  tool_sources: Dict[str, str]) -> Dict:
+        """
+        Execute a single tool call and return the result.
+
+        Args:
+            action_id: Action ID for permission checking
+            tool_block: Tool use block from model response
+            tool_sources: Mapping of tool names to their source ('builtin' or 'mcp')
+
+        Returns:
+            Tool result dictionary
+        """
+        tool_name = tool_block.get('name')
+        tool_id = tool_block.get('id')
+        tool_input = tool_block.get('input', {})
+
+        self._log_write_file_debug(tool_name, tool_block, tool_input)
+
+        try:
+            if not self._is_tool_permitted(action_id, tool_name):
+                return {
+                    'type': 'tool_result',
+                    'tool_use_id': tool_id,
+                    'content': f"Tool '{tool_name}' is not permitted for this action"
+                }
+
+            tool_source = tool_sources.get(tool_name, 'mcp')
+
+            if tool_source == 'builtin':
+                return self._execute_builtin_tool_call(tool_name, tool_id, tool_input)
+
+            if self.mcp_manager:
+                return self._execute_mcp_tool_call(tool_name, tool_id, tool_input)
+
+            return {
+                'type': 'tool_result',
+                'tool_use_id': tool_id,
+                'content': "No tool execution handler available"
+            }
+
+        except Exception as e:
+            logging.error(f"Tool {tool_name} execution failed: {e}")
+            return {
+                'type': 'tool_result',
+                'tool_use_id': tool_id,
+                'content': f"Error executing tool: {str(e)}",
+                'is_error': True
+            }
+
+    @staticmethod
+    def _log_write_file_debug(tool_name: str, tool_block: Dict, tool_input: Dict) -> None:
+        """Log debug information for write_file tool calls."""
+        if tool_name != 'write_file':
+            return
+        logging.debug(f"write_file tool_block keys: {list(tool_block.keys())}")
+        logging.debug(f"write_file tool_input keys: {list(tool_input.keys()) if tool_input else 'None'}")
+        content_preview = str(tool_input.get('content', ''))[:100] if tool_input else ''
+        logging.debug(
+            f"write_file content preview: '{content_preview}...' "
+            f"(len={len(tool_input.get('content', '') or '')})"
+        )
+
+    def _is_tool_permitted(self, action_id: int, tool_name: str) -> bool:
+        """
+        Check whether a tool is permitted for the given action.
+
+        Args:
+            action_id: Action ID
+            tool_name: Name of the tool to check
+
+        Returns:
+            True if the tool is allowed
+        """
+        permissions = self.database.get_action_tool_permissions(action_id)
+        return any(
+            p['tool_name'] == tool_name and p['permission_state'] == 'allowed'
+            for p in permissions
+        )
+
+    def _execute_builtin_tool_call(self, tool_name: str, tool_id: str,
+                                   tool_input: Dict) -> Dict:
+        """
+        Execute a builtin tool call and return the formatted result.
+
+        Args:
+            tool_name: Name of the builtin tool
+            tool_id: Tool use ID for the response
+            tool_input: Tool input parameters
+
+        Returns:
+            Tool result dictionary
+        """
+        from dtSpark.tools import builtin
+
+        logging.debug(f"Executing builtin tool: {tool_name}")
+        result = builtin.execute_builtin_tool(tool_name, tool_input, self.config)
+
+        if result.get('success'):
+            result_data = result.get('result', {})
+            result_str = json.dumps(result_data, indent=2) if isinstance(result_data, dict) else str(result_data)
+            return {
+                'type': 'tool_result',
+                'tool_use_id': tool_id,
+                'content': result_str
+            }
+
+        return {
+            'type': 'tool_result',
+            'tool_use_id': tool_id,
+            'content': result.get('error', 'Builtin tool execution failed'),
+            'is_error': True
+        }
+
+    def _execute_mcp_tool_call(self, tool_name: str, tool_id: str,
+                               tool_input: Dict) -> Dict:
+        """
+        Execute an MCP tool call and return the formatted result.
+
+        Args:
+            tool_name: Name of the MCP tool
+            tool_id: Tool use ID for the response
+            tool_input: Tool input parameters
+
+        Returns:
+            Tool result dictionary
+        """
+        logging.debug(f"Executing MCP tool: {tool_name}")
+        result = self._call_mcp_tool_sync(tool_name, tool_input)
+
+        if result and not result.get('isError'):
+            return {
+                'type': 'tool_result',
+                'tool_use_id': tool_id,
+                'content': self._extract_mcp_text_content(result)
+            }
+
+        return {
+            'type': 'tool_result',
+            'tool_use_id': tool_id,
+            'content': self._extract_mcp_error_message(result),
+            'is_error': True
+        }
+
+    @staticmethod
+    def _extract_mcp_text_content(result: Dict) -> str:
+        """
+        Extract text content from an MCP tool result.
+
+        Args:
+            result: MCP tool result dictionary
+
+        Returns:
+            Concatenated text content or default message
+        """
+        content_parts = [
+            content.get('text', '')
+            for content in result.get('content', [])
+            if content.get('type') == 'text'
+        ]
+        return '\n'.join(content_parts) if content_parts else 'Tool executed successfully (no output)'
+
+    @staticmethod
+    def _extract_mcp_error_message(result: Optional[Dict]) -> str:
+        """
+        Extract error message from an MCP tool result.
+
+        Args:
+            result: MCP tool result dictionary (may be None)
+
+        Returns:
+            Error message string
+        """
+        if not result:
+            return "Tool execution failed"
+
+        for content in result.get('content', []):
+            if content.get('type') == 'text':
+                return content.get('text', 'Tool execution failed')
+
+        return "Tool execution failed"
 
     def _call_mcp_tool_sync(self, tool_name: str, tool_input: Dict) -> Optional[Dict]:
         """

@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a5] - 2026-01-31
+
+### Added
+- Browser heartbeat auto-shutdown: application automatically shuts down when browser tab is closed
+  - Configurable heartbeat interval and timeout via `interface.web.browser_heartbeat` settings
+- `autonomous_actions.enabled` configuration option to enable/disable autonomous actions globally
+  - When disabled, Actions navigation is hidden from both Web UI and CLI menus
+  - Action scheduler initialisation is skipped entirely when disabled
+
+### Fixed
+- Send button now stays disabled throughout the entire LLM response stream (was re-enabling prematurely)
+- SSL certificate validation vulnerabilities marked with NOSONAR for intentional config-driven bypass
+- `asyncio.CancelledError` not re-raised in MCP manager connection handling
+- Pricing fallback method now correctly returns `False` when using fallback data
+- Background tasks saved to variables to prevent premature garbage collection (web server)
+- Synchronous file operations replaced with async equivalents in async endpoints
+- User-controlled data sanitised before logging in web endpoints
+
+### Changed
+- Refactored 40+ functions to reduce cognitive complexity below SonarCloud threshold (15)
+- Extracted duplicate string literals into module-level constants (pricing, model IDs)
+- Replaced bare `except:` clauses with specific exception types across codebase
+- Modernised JavaScript DOM API usage (optional chaining, `.remove()`, `.dataset`)
+- Replaced ARIA roles with semantic HTML elements for improved accessibility
+- Merged duplicate CSS selectors and improved colour contrast for WCAG AA compliance
+- Removed unused function parameters and empty f-strings across codebase
+- Removed commented-out code blocks
+
+---
+
 ## [1.1.0a3] - 2026-01-29
 
 ### Fixed
@@ -301,6 +331,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.1.0a5 | SonarCloud remediation, browser heartbeat auto-shutdown, autonomous actions config, accessibility fixes |
 | 1.1.0a3 | Enforce mandatory model in Web UI, fix predefined conversation errors |
 | 1.1.0a2 | Fix create_word_document style handling, remove sensitive data from logs |
 | 1.1.0a1 | Web UI commands (instructions, copy, delete files/conversation), document tools config fix |

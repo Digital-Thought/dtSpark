@@ -1059,6 +1059,9 @@ def register_daemon(
         conn.commit()
         logging.info(f"Daemon re-registered: {daemon_id} (PID: {pid})")
         return True
+    except sqlite3.Error as e:
+        logging.error(f"Failed to register daemon {daemon_id}: {e}")
+        return False
 
 
 def update_daemon_heartbeat(

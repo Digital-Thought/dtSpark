@@ -319,15 +319,18 @@ async def command_attach(
                 # Create temporary file
                 suffix = os.path.splitext(upload_file.filename)[1]
                 temp_fd, temp_path = tempfile.mkstemp(suffix=suffix)
+                os.close(temp_fd)
 
                 # Write uploaded content to temp file
-                with os.fdopen(temp_fd, 'wb') as f:
-                    content = await upload_file.read()
+                content = await upload_file.read()
+                with open(temp_path, 'wb') as f:
                     f.write(content)
 
                 temp_files.append(temp_path)
                 attached_filenames.append(upload_file.filename)
-                logger.info(f"Saved uploaded file {upload_file.filename} to {temp_path}")
+                # Sanitise filename for safe logging (prevent log injection)
+                safe_filename = upload_file.filename.replace('\n', '').replace('\r', '')
+                logger.info("Saved uploaded file '%s' to %s", safe_filename, temp_path)
 
             # Attach files using conversation manager
             if temp_files:
@@ -366,7 +369,7 @@ async def command_attach(
                 try:
                     if os.path.exists(temp_path):
                         os.unlink(temp_path)
-                except:
+                except OSError:
                     pass
 
     except Exception as e:

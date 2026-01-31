@@ -161,7 +161,7 @@ class AWSAuthenticator:
             # Check if this is an SSO token expiration error
             if 'Token has expired' in error_str or 'refresh failed' in error_str:
                 logging.warning("AWS SSO token has expired")
-                logging.info(f"Attempting automatic re-authentication...")
+                logging.info("Attempting automatic re-authentication...")
 
                 # Try to trigger SSO login automatically
                 if self.trigger_sso_login():

@@ -64,6 +64,10 @@ interface:
       cert_file: certs/ssl_cert.pem  # Path to SSL certificate file
       key_file: certs/ssl_key.pem  # Path to SSL private key file
     auto_open_browser: true  # Automatically open web browser when server starts
+    browser_heartbeat:
+      enabled: true                  # Enable browser heartbeat monitoring (auto-shutdown when browser closes)
+      interval_seconds: 15           # How often browser sends heartbeat ping to server
+      timeout_seconds: 60            # Shutdown application after this many seconds without a heartbeat
 
 # LLM Provider Configuration
 llm_providers:
@@ -659,6 +663,12 @@ tool_permissions:
                        #
                        # Note: When reverted to false, users will be prompted again for tools
                        # that were auto-approved (since permissions weren't stored)
+
+# Autonomous Actions Configuration
+# Controls whether autonomous action creation and scheduling is available
+autonomous_actions:
+  enabled: false  # Set to true to enable autonomous action creation and scheduling
+                  # When disabled, action-related menus and pages are hidden from both Web UI and CLI
 
 # Daemon Configuration
 # Background process for executing autonomous actions independently

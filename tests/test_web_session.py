@@ -5,7 +5,6 @@ Tests the SessionManager class for session creation, validation, and timeout.
 
 """
 
-import pytest
 import time
 from datetime import timedelta
 from dtSpark.web.session import SessionManager

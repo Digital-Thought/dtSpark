@@ -15,6 +15,13 @@ from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple
 from botocore.exceptions import ClientError
 
+# Model ID constants
+_MODEL_CLAUDE_35_SONNET_V2 = 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+_MODEL_CLAUDE_35_SONNET_V1 = 'anthropic.claude-3-5-sonnet-20240620-v1:0'
+_MODEL_CLAUDE_3_OPUS = 'anthropic.claude-3-opus-20240229-v1:0'
+_MODEL_CLAUDE_3_SONNET = 'anthropic.claude-3-sonnet-20240229-v1:0'
+_MODEL_CLAUDE_3_HAIKU = 'anthropic.claude-3-haiku-20240307-v1:0'
+
 
 class BedrockPricing:
     """Manages AWS Bedrock pricing data and cost calculations."""
@@ -92,7 +99,7 @@ class BedrockPricing:
         # Fall back to hardcoded pricing
         logging.warning("All pricing fetch methods failed, using fallback pricing")
         self._use_fallback_pricing()
-        return True
+        return False
 
     def _fetch_from_bulk_api(self) -> bool:
         """
@@ -359,15 +366,15 @@ class BedrockPricing:
             elif 'sonnet 4' in model_lower or 'sonnet-4' in model_lower:
                 return 'anthropic.claude-sonnet-4-0-v1:0'
             elif '3.5 sonnet v2' in model_lower or '3-5-sonnet-v2' in model_lower:
-                return 'anthropic.claude-3-5-sonnet-20241022-v2:0'
+                return _MODEL_CLAUDE_35_SONNET_V2
             elif '3.5 sonnet' in model_lower or '3-5-sonnet' in model_lower:
-                return 'anthropic.claude-3-5-sonnet-20240620-v1:0'
+                return _MODEL_CLAUDE_35_SONNET_V1
             elif '3 opus' in model_lower or '3-opus' in model_lower:
-                return 'anthropic.claude-3-opus-20240229-v1:0'
+                return _MODEL_CLAUDE_3_OPUS
             elif '3 sonnet' in model_lower or '3-sonnet' in model_lower:
-                return 'anthropic.claude-3-sonnet-20240229-v1:0'
+                return _MODEL_CLAUDE_3_SONNET
             elif '3 haiku' in model_lower or '3-haiku' in model_lower:
-                return 'anthropic.claude-3-haiku-20240307-v1:0'
+                return _MODEL_CLAUDE_3_HAIKU
 
         # Amazon Titan models
         elif 'titan' in model_lower:
@@ -484,26 +491,26 @@ class BedrockPricing:
         # Fallback pricing for common models (prices per 1000 tokens)
         fallback = {
             # Claude 3.5 Sonnet v2
-            ('anthropic.claude-3-5-sonnet-20241022-v2:0', 'us-east-1'): {'input': 0.003, 'output': 0.015},
-            ('anthropic.claude-3-5-sonnet-20241022-v2:0', 'us-west-2'): {'input': 0.003, 'output': 0.015},
-            ('anthropic.claude-3-5-sonnet-20241022-v2:0', 'ap-southeast-2'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_35_SONNET_V2, 'us-east-1'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_35_SONNET_V2, 'us-west-2'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_35_SONNET_V2, 'ap-southeast-2'): {'input': 0.003, 'output': 0.015},
 
             # Claude 3.5 Sonnet v1
-            ('anthropic.claude-3-5-sonnet-20240620-v1:0', 'us-east-1'): {'input': 0.003, 'output': 0.015},
-            ('anthropic.claude-3-5-sonnet-20240620-v1:0', 'us-west-2'): {'input': 0.003, 'output': 0.015},
-            ('anthropic.claude-3-5-sonnet-20240620-v1:0', 'ap-southeast-2'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_35_SONNET_V1, 'us-east-1'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_35_SONNET_V1, 'us-west-2'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_35_SONNET_V1, 'ap-southeast-2'): {'input': 0.003, 'output': 0.015},
 
             # Claude 3 Opus
-            ('anthropic.claude-3-opus-20240229-v1:0', 'us-east-1'): {'input': 0.015, 'output': 0.075},
-            ('anthropic.claude-3-opus-20240229-v1:0', 'us-west-2'): {'input': 0.015, 'output': 0.075},
+            (_MODEL_CLAUDE_3_OPUS, 'us-east-1'): {'input': 0.015, 'output': 0.075},
+            (_MODEL_CLAUDE_3_OPUS, 'us-west-2'): {'input': 0.015, 'output': 0.075},
 
             # Claude 3 Sonnet
-            ('anthropic.claude-3-sonnet-20240229-v1:0', 'us-east-1'): {'input': 0.003, 'output': 0.015},
-            ('anthropic.claude-3-sonnet-20240229-v1:0', 'us-west-2'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_3_SONNET, 'us-east-1'): {'input': 0.003, 'output': 0.015},
+            (_MODEL_CLAUDE_3_SONNET, 'us-west-2'): {'input': 0.003, 'output': 0.015},
 
             # Claude 3 Haiku
-            ('anthropic.claude-3-haiku-20240307-v1:0', 'us-east-1'): {'input': 0.00025, 'output': 0.00125},
-            ('anthropic.claude-3-haiku-20240307-v1:0', 'us-west-2'): {'input': 0.00025, 'output': 0.00125},
+            (_MODEL_CLAUDE_3_HAIKU, 'us-east-1'): {'input': 0.00025, 'output': 0.00125},
+            (_MODEL_CLAUDE_3_HAIKU, 'us-west-2'): {'input': 0.00025, 'output': 0.00125},
         }
 
         self.pricing_data = fallback

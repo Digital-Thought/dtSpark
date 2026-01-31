@@ -53,11 +53,13 @@
                             <i class="bi bi-plus-circle"></i> New
                         </a>
                     </li>
+                    {% if actions_enabled %}
                     <li class="nav-item">
                         <a class="nav-link" href="/actions">
                             <i class="bi bi-robot"></i> Actions
                         </a>
                     </li>
+                    {% endif %}
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item">
@@ -89,5 +91,16 @@
     <script src="/static/js/main.js"></script>
 
     {% block extra_scripts %}{% endblock %}
+
+    {% if heartbeat_enabled %}
+    <!-- Browser heartbeat - auto-shutdown when browser closes -->
+    <script>
+    setInterval(() => {
+        fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+    }, {{ heartbeat_interval_ms }});
+    // Send initial heartbeat immediately
+    fetch('/api/heartbeat', { method: 'POST' }).catch(() => {});
+    </script>
+    {% endif %}
 </body>
 </html>

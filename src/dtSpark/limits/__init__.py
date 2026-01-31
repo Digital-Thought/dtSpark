@@ -2,7 +2,7 @@
 from .tokens import TokenManager, LimitStatus
 try:
     from .costs import CostManager
-except:
+except ImportError:
     CostManager = None
 
 __all__ = ['TokenManager', 'LimitStatus']

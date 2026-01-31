@@ -185,7 +185,7 @@ class MCPClient:
                     httpx_client = httpx.AsyncClient(
                         headers=headers if headers else None,
                         timeout=self.config.timeout,
-                        verify=False
+                        verify=False  # NOSONAR - intentional, gated by ssl_verify config
                     )
 
                 # Use streamable HTTP client with headers
@@ -226,7 +226,7 @@ class MCPClient:
                     httpx_client = httpx.AsyncClient(
                         headers=headers if headers else None,
                         timeout=self.config.timeout,
-                        verify=False
+                        verify=False  # NOSONAR - intentional, gated by ssl_verify config
                     )
 
                 # Use SSE client with headers
@@ -266,7 +266,7 @@ class MCPClient:
                 logging.error(f"MCP session initialization cancelled for {self.config.name} "
                              f"(server may have returned an error)")
                 await self._cleanup_failed_connection()
-                return False
+                raise
 
             self._connected = True
             logging.info(f"Connected to MCP server: {self.config.name} (transport: {self.config.transport})")
@@ -276,7 +276,7 @@ class MCPClient:
             logging.error(f"Connection cancelled for MCP server {self.config.name} "
                          f"(check server URL and authentication)")
             await self._cleanup_failed_connection()
-            return False
+            raise
         except Exception as e:
             error_msg = str(e)
             # Provide more helpful error messages for common issues

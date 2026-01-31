@@ -50,8 +50,6 @@ async function loadChatHistory(conversationId) {
  * @param {string} timestamp - Message timestamp (optional)
  */
 function appendMessage(role, content, timestamp = null) {
-    const messagesContainer = document.getElementById('chat-messages');
-
     // Check if content contains tool results
     if (content.startsWith('[TOOL_RESULTS]')) {
         appendToolResults(content, timestamp);
@@ -107,7 +105,7 @@ function appendRegularMessage(role, content, timestamp = null) {
     messageDiv.className = `chat-message ${role}`;
 
     // Generate unique ID for the copy button
-    const copyBtnId = 'copy-btn-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const copyBtnId = 'copy-btn-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
 
     // Create message header with copy icon
     const header = document.createElement('div');
@@ -308,8 +306,8 @@ function removeStatus(idOrElement) {
         document.getElementById(idOrElement) :
         idOrElement;
 
-    if (element && element.parentNode) {
-        element.parentNode.removeChild(element);
+    if (element?.parentNode) {
+        element.remove();
     }
 }
 
@@ -360,7 +358,7 @@ function updateStreamingMessage(content, messageElement = null) {
         messageElement.className = 'chat-message assistant';
 
         // Generate unique ID for the copy button
-        const copyBtnId = 'stream-copy-btn-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        const copyBtnId = 'stream-copy-btn-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
 
         messageElement.innerHTML = `
             <div class="message-header d-flex justify-content-between align-items-center">
@@ -463,7 +461,7 @@ function showToast(message, type = 'info') {
     const toast = document.createElement('div');
     toast.id = toastId;
     toast.className = 'toast';
-    toast.setAttribute('role', 'alert');
+    toast.role = 'alert';
 
     let bgClass = 'bg-primary';
     if (type === 'success') bgClass = 'bg-success';
@@ -550,7 +548,7 @@ async function showToolPermissionDialog(requestId, toolName, toolDescription) {
     const buttons = modalElement.querySelectorAll('.permission-btn');
     buttons.forEach(button => {
         button.addEventListener('click', async () => {
-            const response = button.getAttribute('data-response');
+            const response = button.dataset.response;
 
             // Send response to server
             try {

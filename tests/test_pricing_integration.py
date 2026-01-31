@@ -26,7 +26,7 @@ def test_pricing_integration():
     success = pricing.load_pricing_data()
 
     print("\n1. Pricing initialization:")
-    print(f"   [OK] Pricing manager created")
+    print("   [OK] Pricing manager created")
     print(f"   [OK] Cache directory: {running_dir}")
     print(f"   [OK] Pricing loaded: {success}")
     print(f"   [OK] Found {len(pricing.pricing_data)} model/region combinations")

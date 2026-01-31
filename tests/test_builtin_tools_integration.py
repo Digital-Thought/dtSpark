@@ -7,9 +7,8 @@ the conversation manager and can be called during conversations.
 
 import unittest
 import json
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from dtSpark.conversation_manager import ConversationManager
-from dtSpark.tools import builtin as builtin_tools
 
 
 class TestBuiltinToolsIntegration(unittest.TestCase):
@@ -96,7 +95,7 @@ class TestBuiltinToolsIntegration(unittest.TestCase):
         # Populate tools cache first
         self.conv_manager._get_mcp_tools()
 
-        result, execution_time, is_error = self.conv_manager._call_mcp_tool(
+        result, _execution_time, is_error = self.conv_manager._call_mcp_tool(
             'get_current_datetime',
             {'timezone': 'UTC', 'format': 'iso'}
         )
@@ -113,7 +112,7 @@ class TestBuiltinToolsIntegration(unittest.TestCase):
         # Populate tools cache first
         self.conv_manager._get_mcp_tools()
 
-        result, execution_time, is_error = self.conv_manager._call_mcp_tool(
+        result, _execution_time, is_error = self.conv_manager._call_mcp_tool(
             'get_current_datetime',
             {'timezone': 'Invalid/Timezone'}
         )

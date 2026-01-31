@@ -126,6 +126,13 @@ class PromptInspector:
 
         # Log violation if configured
         if self.violation_logger and result.violation_types:
+            if result.blocked:
+                action_taken = 'blocked'
+            elif result.needs_confirmation:
+                action_taken = 'warned'
+            else:
+                action_taken = 'logged'
+
             self.violation_logger.log_violation(
                 user_guid=user_guid,
                 conversation_id=conversation_id,
@@ -133,7 +140,7 @@ class PromptInspector:
                 severity=result.severity,
                 prompt_snippet=prompt[:500],
                 detection_method=result.inspection_method,
-                action_taken='blocked' if result.blocked else 'warned' if result.needs_confirmation else 'logged',
+                action_taken=action_taken,
                 confidence_score=result.confidence
             )
 

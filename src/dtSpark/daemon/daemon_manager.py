@@ -190,32 +190,9 @@ class DaemonManager:
         print(f"Stopping daemon (PID: {pid})...")
 
         # Send termination signal
-        try:
-            if sys.platform == 'win32':
-                # Windows: Create a stop signal file that the daemon checks
-                # This is more reliable than signals across console sessions
-                stop_file = str(self.pid_file.path) + '.stop'
-                try:
-                    with open(stop_file, 'w') as f:
-                        f.write(str(pid))
-                    print("Stop signal sent")
-                except Exception as e:
-                    print(f"Failed to create stop signal: {e}")
-                    # Fall back to taskkill /F if signal file fails
-                    subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
-            else:
-                # Unix: SIGTERM for graceful shutdown
-                os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            print("Daemon process not found")
-            self.pid_file.remove()
-            return 0
-        except PermissionError:
-            print("Permission denied to stop daemon")
-            return 1
-        except Exception as e:
-            print(f"Error stopping daemon: {e}")
-            return 1
+        signal_result = self._send_stop_signal(pid)
+        if signal_result is not None:
+            return signal_result
 
         # Wait for graceful shutdown
         for i in range(timeout):
@@ -229,6 +206,65 @@ class DaemonManager:
 
         # Process didn't stop gracefully - clean up and report
         self._cleanup_stop_file()
+        return self._handle_stop_timeout(pid, timeout)
+
+    def _send_stop_signal(self, pid: int) -> Optional[int]:
+        """
+        Send a termination signal to the daemon process.
+
+        Args:
+            pid: Process ID of the daemon
+
+        Returns:
+            Exit code if the stop completed immediately (success or failure),
+            or None if the caller should wait for shutdown
+        """
+        try:
+            if sys.platform == 'win32':
+                self._send_stop_signal_windows(pid)
+            else:
+                os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            print("Daemon process not found")
+            self.pid_file.remove()
+            return 0
+        except PermissionError:
+            print("Permission denied to stop daemon")
+            return 1
+        except Exception as e:
+            print(f"Error stopping daemon: {e}")
+            return 1
+        return None
+
+    def _send_stop_signal_windows(self, pid: int) -> None:
+        """
+        Send a stop signal on Windows using a signal file.
+
+        Falls back to taskkill if the signal file cannot be created.
+
+        Args:
+            pid: Process ID of the daemon
+        """
+        stop_file = str(self.pid_file.path) + '.stop'
+        try:
+            with open(stop_file, 'w') as f:
+                f.write(str(pid))
+            print("Stop signal sent")
+        except Exception as e:
+            print(f"Failed to create stop signal: {e}")
+            subprocess.run(['taskkill', '/F', '/PID', str(pid)], capture_output=True)
+
+    def _handle_stop_timeout(self, pid: int, timeout: int) -> int:
+        """
+        Handle the case where the daemon did not stop within the timeout.
+
+        Args:
+            pid: Process ID of the daemon
+            timeout: The timeout that was exceeded
+
+        Returns:
+            0 if force-terminated successfully, 1 otherwise
+        """
         print(f"Daemon did not stop within {timeout} seconds")
         if sys.platform == 'win32':
             print("Forcing termination...")

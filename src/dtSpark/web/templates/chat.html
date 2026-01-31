@@ -21,9 +21,9 @@
             <div class="card-body overflow-auto" id="chat-messages">
                 <!-- Messages will be appended here -->
                 <div class="text-center text-muted">
-                    <div class="spinner-border spinner-border-sm" role="status">
+                    <output class="spinner-border spinner-border-sm">
                         <span class="visually-hidden">Loading...</span>
-                    </div>
+                    </output>
                     <span class="ms-2">Loading chat history...</span>
                 </div>
             </div>
@@ -48,14 +48,14 @@
                         ></textarea>
                     </div>
                     <div class="d-flex justify-content-between align-items-center">
-                        <div class="btn-group" role="group">
+                        <fieldset class="btn-group">
                             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="showCommandMenu()">
                                 <i class="bi bi-terminal"></i> Commands
                             </button>
                             <button type="button" class="btn btn-outline-secondary btn-sm" onclick="attachFiles()">
                                 <i class="bi bi-paperclip"></i> Attach
                             </button>
-                        </div>
+                        </fieldset>
                         <button type="submit" class="btn btn-primary" id="send-btn">
                             <i class="bi bi-send-fill"></i> Send
                         </button>
@@ -76,9 +76,9 @@
             </div>
             <div class="modal-body" id="info-content">
                 <div class="text-center">
-                    <div class="spinner-border spinner-border-sm" role="status">
+                    <output class="spinner-border spinner-border-sm">
                         <span class="visually-hidden">Loading...</span>
-                    </div>
+                    </output>
                 </div>
             </div>
         </div>
@@ -432,7 +432,7 @@ async function showMCPAuditModal() {
                     </div>
                     <div class="modal-body" id="mcp-audit-content">
                         <div class="text-center">
-                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                            <output class="spinner-border spinner-border-sm"></output>
                         </div>
                     </div>
                 </div>
@@ -517,7 +517,7 @@ async function showMCPServersModal() {
                     </div>
                     <div class="modal-body" id="mcp-servers-content">
                         <div class="text-center">
-                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                            <output class="spinner-border spinner-border-sm"></output>
                         </div>
                     </div>
                 </div>
@@ -611,9 +611,9 @@ async function loadConversationInfo() {
     try {
         document.getElementById('info-content').innerHTML = `
             <div class="text-center">
-                <div class="spinner-border spinner-border-sm" role="status">
+                <output class="spinner-border spinner-border-sm">
                     <span class="visually-hidden">Loading...</span>
-                </div>
+                </output>
             </div>
         `;
 

@@ -183,8 +183,9 @@ class ContextCompactor:
 
         # Check emergency threshold (force compaction even during tool use)
         if current_tokens >= emergency_threshold_tokens:
+            usage_pct = current_tokens / context_window * 100
             logging.warning(f"EMERGENCY COMPACTION: {current_tokens:,}/{context_window:,} tokens "
-                           f"({current_tokens/context_window*100:.1f}% of context window)")
+                           f"({usage_pct:.1f}%% of context window)")
             if self.cli_interface:
                 self.cli_interface.print_warning(
                     f"Emergency compaction triggered at {current_tokens/context_window*100:.1f}% of context window"
@@ -199,8 +200,9 @@ class ContextCompactor:
 
         # Normal threshold check
         if current_tokens > compaction_threshold_tokens:
+            usage_pct = current_tokens / context_window * 100
             logging.info(f"Compaction triggered: {current_tokens:,}/{compaction_threshold_tokens:,} tokens "
-                        f"({current_tokens/context_window*100:.1f}% of context window)")
+                        f"({usage_pct:.1f}%% of context window)")
             return self._perform_compaction(conversation_id, model_id, provider, limits)
 
         return False
@@ -220,41 +222,30 @@ class ContextCompactor:
             True if successful, False otherwise
         """
         start_time = datetime.now()
-
-        # Display progress
         self._display_progress("🗜️  Starting intelligent context compaction...")
         self._display_separator()
 
         try:
-            # Get ALL messages (including previously compacted ones for full recompaction)
             messages = self.database.get_conversation_messages(
                 conversation_id, include_rolled_up=True
             )
-
             if len(messages) <= 4:
                 logging.warning("Not enough messages to compact")
                 self._display_warning("Not enough messages to compact")
                 return False
 
-            # Calculate original metrics
             original_token_count = sum(msg.get('token_count', 0) for msg in messages)
             original_message_count = len(messages)
-
             self._display_info(
                 f"Analysing {original_message_count} messages ({original_token_count:,} tokens)..."
             )
 
-            # Format conversation history for compaction
-            conversation_history = self._format_messages_for_compaction(messages)
-
-            # Build the compaction prompt
             compaction_prompt = self._build_compaction_prompt(
-                conversation_history,
+                self._format_messages_for_compaction(messages),
                 original_message_count,
                 original_token_count
             )
 
-            # Check provider rate limits before attempting compaction
             rate_limit_check = self._check_rate_limits_for_compaction(
                 compaction_prompt, original_token_count
             )
@@ -263,152 +254,157 @@ class ContextCompactor:
                 logging.warning(f"Compaction skipped: {rate_limit_check['message']}")
                 return False
 
-            # Calculate max tokens for compacted output
-            # Use model's max_output but cap at reasonable size
-            max_compaction_tokens = min(
-                limits.get('max_output', 8192),
-                max(2000, int(original_token_count * self.compaction_ratio)),
-                16000  # Absolute cap
-            )
-
-            # Estimate prompt size and validate against context window
-            context_window = limits.get('context_window', 8192)
-            prompt_tokens = 0
-            if hasattr(self.bedrock_service, 'count_tokens'):
-                try:
-                    prompt_tokens = self.bedrock_service.count_tokens(compaction_prompt)
-                except Exception:
-                    prompt_tokens = len(compaction_prompt) // 4  # Fallback estimate
-            else:
-                prompt_tokens = len(compaction_prompt) // 4
-
-            # Check if prompt exceeds context window (need room for output too)
-            max_input_tokens = context_window - max_compaction_tokens - 1000  # Safety buffer
-            if prompt_tokens > max_input_tokens:
-                logging.warning(
-                    f"Compaction prompt ({prompt_tokens:,} tokens) too large for context window "
-                    f"({context_window:,} tokens with {max_compaction_tokens:,} reserved for output)"
-                )
-                self._display_warning(
-                    f"Conversation too large ({prompt_tokens:,} tokens) for compaction in a single pass. "
-                    f"Context window: {context_window:,} tokens"
-                )
-                # Still proceed - let the API handle it and return a proper error
-                # The model might still be able to handle it or provide partial results
-
-            logging.info(
-                f"Compaction: input={prompt_tokens:,} tokens, target_output={max_compaction_tokens:,} tokens, "
-                f"context_window={context_window:,} tokens"
+            max_compaction_tokens, prompt_tokens = self._calculate_compaction_tokens(
+                compaction_prompt, original_token_count, limits
             )
 
             self._display_info(f"Generating compacted context (target: {max_compaction_tokens:,} tokens)...")
 
-            # Invoke LLM for compaction
-            response = self.bedrock_service.invoke_model(
-                [{'role': 'user', 'content': compaction_prompt}],
-                max_tokens=max_compaction_tokens,
-                temperature=0.2  # Low temperature for consistent compaction
-            )
-
-            # Check for error response
-            if not response:
-                logging.error("Compaction failed - null response from model")
-                self._display_error("Compaction failed - no response from model")
+            compacted_content = self._invoke_compaction_model(compaction_prompt, max_compaction_tokens)
+            if compacted_content is None:
                 return False
 
-            if response.get('error'):
-                error_msg = response.get('error_message', 'Unknown error')
-                error_type = response.get('error_type', 'Unknown')
-                logging.error(f"Compaction failed - {error_type}: {error_msg}")
-                self._display_error(f"Compaction failed: {error_msg}")
-                return False
-
-            # Get content from response (may be in 'content' or 'content_blocks')
-            content = response.get('content', '')
-            if not content and response.get('content_blocks'):
-                # Try to extract text from content_blocks
-                for block in response.get('content_blocks', []):
-                    if block.get('type') == 'text':
-                        content += block.get('text', '')
-
-            if not content:
-                logging.error(f"Compaction failed - empty response. Response keys: {list(response.keys())}")
-                self._display_error("Compaction failed - no content in model response")
-                return False
-
-            compacted_content = content.strip()
             compacted_token_count = self.bedrock_service.count_tokens(compacted_content)
-
-            # Validate compaction quality
             if len(compacted_content) < 200:
                 logging.warning(f"Compacted content too brief ({len(compacted_content)} chars), aborting")
                 self._display_warning("Compacted content too brief, keeping original messages")
                 return False
 
-            # Create compaction marker
-            compaction_marker = self._create_compaction_marker(
-                original_message_count=original_message_count,
-                original_token_count=original_token_count,
-                compacted_token_count=compacted_token_count,
-                model_id=model_id,
-                context_window=limits['context_window']
+            self._store_compaction_results(
+                conversation_id, messages, compacted_content,
+                original_message_count, original_token_count,
+                compacted_token_count, limits['context_window']
             )
 
-            # Add compacted context as special message
-            self.database.add_message(
-                conversation_id,
-                'user',
-                f"[COMPACTED CONTEXT - {compaction_marker}]\n\n{compacted_content}",
-                compacted_token_count
+            self._report_compaction_success(
+                start_time, original_message_count,
+                original_token_count, compacted_token_count
             )
-
-            # Mark all previous messages as compacted (rolled_up)
-            message_ids = [msg['id'] for msg in messages]
-            self.database.mark_messages_as_rolled_up(message_ids)
-
-            # Record compaction in rollup history
-            self.database.record_rollup(
-                conversation_id,
-                original_message_count,
-                compacted_content,
-                original_token_count,
-                compacted_token_count
-            )
-
-            # Recalculate total_tokens to fix any accounting errors from the rollup
-            # This is necessary because record_rollup uses incremental arithmetic that
-            # can become corrupted when include_rolled_up=True includes already-subtracted tokens
-            actual_token_count = self.database.recalculate_total_tokens(conversation_id)
-            logging.debug(f"Recalculated total_tokens after compaction: {actual_token_count:,}")
-
-            # Calculate metrics
-            elapsed_time = (datetime.now() - start_time).total_seconds()
-            reduction_pct = ((original_token_count - compacted_token_count) /
-                           original_token_count * 100) if original_token_count > 0 else 0
-
-            # Log success
-            logging.info(f"Compaction completed in {elapsed_time:.1f}s: "
-                        f"{original_message_count} messages → structured context, "
-                        f"{original_token_count:,} → {compacted_token_count:,} tokens "
-                        f"({reduction_pct:.1f}% reduction)")
-
-            # Display completion
-            self._display_success(
-                f"✓ Compaction complete: {original_message_count} messages → structured context"
-            )
-            self._display_info(
-                f"Token reduction: {original_token_count:,} → {compacted_token_count:,} "
-                f"({reduction_pct:.1f}% reduction)"
-            )
-            self._display_info(f"Completed in {elapsed_time:.1f} seconds")
-            self._display_separator()
-
             return True
 
         except Exception as e:
             logging.error(f"Compaction failed with error: {e}", exc_info=True)
             self._display_error(f"Compaction failed: {str(e)}")
             return False
+
+    def _calculate_compaction_tokens(self, compaction_prompt: str,
+                                     original_token_count: int,
+                                     limits: Dict[str, int]) -> Tuple[int, int]:
+        """Calculate max compaction output tokens and estimate prompt size."""
+        max_compaction_tokens = min(
+            limits.get('max_output', 8192),
+            max(2000, int(original_token_count * self.compaction_ratio)),
+            16000
+        )
+
+        context_window = limits.get('context_window', 8192)
+        if hasattr(self.bedrock_service, 'count_tokens'):
+            try:
+                prompt_tokens = self.bedrock_service.count_tokens(compaction_prompt)
+            except Exception:
+                prompt_tokens = len(compaction_prompt) // 4
+        else:
+            prompt_tokens = len(compaction_prompt) // 4
+
+        max_input_tokens = context_window - max_compaction_tokens - 1000
+        if prompt_tokens > max_input_tokens:
+            logging.warning(
+                f"Compaction prompt ({prompt_tokens:,} tokens) too large for context window "
+                f"({context_window:,} tokens with {max_compaction_tokens:,} reserved for output)"
+            )
+            self._display_warning(
+                f"Conversation too large ({prompt_tokens:,} tokens) for compaction in a single pass. "
+                f"Context window: {context_window:,} tokens"
+            )
+
+        logging.info(
+            f"Compaction: input={prompt_tokens:,} tokens, target_output={max_compaction_tokens:,} tokens, "
+            f"context_window={context_window:,} tokens"
+        )
+        return max_compaction_tokens, prompt_tokens
+
+    def _invoke_compaction_model(self, compaction_prompt: str, max_tokens: int) -> Optional[str]:
+        """Invoke the LLM for compaction and return content, or None on failure."""
+        response = self.bedrock_service.invoke_model(
+            [{'role': 'user', 'content': compaction_prompt}],
+            max_tokens=max_tokens,
+            temperature=0.2
+        )
+
+        if not response:
+            logging.error("Compaction failed - null response from model")
+            self._display_error("Compaction failed - no response from model")
+            return None
+
+        if response.get('error'):
+            error_msg = response.get('error_message', 'Unknown error')
+            error_type = response.get('error_type', 'Unknown')
+            logging.error(f"Compaction failed - {error_type}: {error_msg}")
+            self._display_error(f"Compaction failed: {error_msg}")
+            return None
+
+        content = response.get('content', '')
+        if not content and response.get('content_blocks'):
+            for block in response.get('content_blocks', []):
+                if block.get('type') == 'text':
+                    content += block.get('text', '')
+
+        if not content:
+            logging.error(f"Compaction failed - empty response. Response keys: {list(response.keys())}")
+            self._display_error("Compaction failed - no content in model response")
+            return None
+
+        return content.strip()
+
+    def _store_compaction_results(self, conversation_id: int, messages: List[Dict],
+                                  compacted_content: str, original_message_count: int,
+                                  original_token_count: int, compacted_token_count: int,
+                                  context_window: int):
+        """Store compaction results in the database."""
+        compaction_marker = self._create_compaction_marker(
+            original_message_count=original_message_count,
+            original_token_count=original_token_count,
+            compacted_token_count=compacted_token_count,
+            context_window=context_window
+        )
+
+        self.database.add_message(
+            conversation_id, 'user',
+            f"[COMPACTED CONTEXT - {compaction_marker}]\n\n{compacted_content}",
+            compacted_token_count
+        )
+
+        message_ids = [msg['id'] for msg in messages]
+        self.database.mark_messages_as_rolled_up(message_ids)
+        self.database.record_rollup(
+            conversation_id, original_message_count,
+            compacted_content, original_token_count, compacted_token_count
+        )
+
+        actual_token_count = self.database.recalculate_total_tokens(conversation_id)
+        logging.debug(f"Recalculated total_tokens after compaction: {actual_token_count:,}")
+
+    def _report_compaction_success(self, start_time, original_message_count: int,
+                                    original_token_count: int, compacted_token_count: int):
+        """Log and display compaction success metrics."""
+        elapsed_time = (datetime.now() - start_time).total_seconds()
+        reduction_pct = ((original_token_count - compacted_token_count) /
+                        original_token_count * 100) if original_token_count > 0 else 0
+
+        logging.info(f"Compaction completed in {elapsed_time:.1f}s: "
+                    f"{original_message_count} messages → structured context, "
+                    f"{original_token_count:,} → {compacted_token_count:,} tokens "
+                    f"({reduction_pct:.1f}%% reduction)")
+
+        self._display_success(
+            f"✓ Compaction complete: {original_message_count} messages → structured context"
+        )
+        self._display_info(
+            f"Token reduction: {original_token_count:,} → {compacted_token_count:,} "
+            f"({reduction_pct:.1f}%% reduction)"
+        )
+        self._display_info(f"Completed in {elapsed_time:.1f} seconds")
+        self._display_separator()
 
     def _check_rate_limits_for_compaction(
         self, compaction_prompt: str, original_token_count: int
@@ -502,99 +498,120 @@ class ContextCompactor:
             Formatted conversation history string
         """
         formatted_lines = []
-        message_number = 0
 
         for msg in messages:
-            message_number += 1
             role = msg.get('role', 'unknown').upper()
             content = msg.get('content', '')
-            timestamp = msg.get('timestamp', '')
-
-            # Format timestamp if available
-            time_str = ""
-            if timestamp:
-                try:
-                    if isinstance(timestamp, str):
-                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                    else:
-                        dt = timestamp
-                    time_str = f" [{dt.strftime('%Y-%m-%d %H:%M')}]"
-                except (ValueError, AttributeError):
-                    pass
-
-            # Check for previously compacted content
-            if content.startswith('[COMPACTED CONTEXT'):
-                formatted_lines.append(f"\n--- PREVIOUS COMPACTION{time_str} ---")
-                # Extract just the summary sections, not the full compacted content
-                formatted_lines.append("[Previous conversation was compacted - key points preserved below]")
-                # Include a truncated version of the compacted content
-                compacted_preview = content[:2000] + "..." if len(content) > 2000 else content
-                formatted_lines.append(compacted_preview)
-                formatted_lines.append("--- END PREVIOUS COMPACTION ---\n")
-                continue
-
-            # Check for tool results
-            if content.startswith('[TOOL_RESULTS]'):
-                formatted_lines.append(f"\n[{role}]{time_str} Tool Results:")
-                try:
-                    tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
-                    tool_results = json.loads(tool_results_json)
-                    if isinstance(tool_results, list):
-                        for i, result in enumerate(tool_results, 1):
-                            if isinstance(result, dict) and result.get('type') == 'tool_result':
-                                tool_id = result.get('tool_use_id', 'unknown')[:8]
-                                result_content = result.get('content', '')
-                                # Truncate long tool results
-                                if len(str(result_content)) > 500:
-                                    result_content = str(result_content)[:500] + "... [truncated]"
-                                formatted_lines.append(f"  Result {i} (tool:{tool_id}): {result_content}")
-                except json.JSONDecodeError:
-                    formatted_lines.append(f"  [Raw tool results - {len(content)} chars]")
-                continue
-
-            # Check for tool use blocks
-            if role == 'ASSISTANT' and content.startswith('['):
-                try:
-                    content_blocks = json.loads(content)
-                    if isinstance(content_blocks, list):
-                        text_parts = []
-                        tool_calls = []
-                        for block in content_blocks:
-                            if isinstance(block, dict):
-                                if block.get('type') == 'text':
-                                    text_parts.append(block.get('text', ''))
-                                elif block.get('type') == 'tool_use':
-                                    tool_name = block.get('name', 'unknown')
-                                    tool_input = block.get('input', {})
-                                    # Summarise tool input
-                                    input_summary = self._summarise_tool_input(tool_input)
-                                    tool_calls.append(f"{tool_name}({input_summary})")
-
-                        if text_parts:
-                            formatted_lines.append(f"\n[{role}]{time_str}")
-                            formatted_lines.append(''.join(text_parts))
-                        if tool_calls:
-                            formatted_lines.append(f"[Tool calls: {', '.join(tool_calls)}]")
-                        continue
-                except json.JSONDecodeError:
-                    pass  # Not JSON, treat as regular message
-
-            # Check for rollup summaries
-            if content.startswith('[Summary of previous conversation]'):
-                formatted_lines.append(f"\n--- PREVIOUS SUMMARY{time_str} ---")
-                formatted_lines.append(content)
-                formatted_lines.append("--- END PREVIOUS SUMMARY ---\n")
-                continue
-
-            # Regular message
-            formatted_lines.append(f"\n[{role}]{time_str}")
-            # Truncate very long messages
-            if len(content) > 3000:
-                formatted_lines.append(content[:3000] + "\n... [message truncated, {0} more chars]".format(len(content) - 3000))
-            else:
-                formatted_lines.append(content)
+            time_str = self._format_timestamp(msg.get('timestamp', ''))
+            formatted_lines.extend(self._format_single_message(role, content, time_str))
 
         return '\n'.join(formatted_lines)
+
+    @staticmethod
+    def _format_timestamp(timestamp) -> str:
+        """Format a message timestamp into a display string."""
+        if not timestamp:
+            return ""
+        try:
+            if isinstance(timestamp, str):
+                dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            else:
+                dt = timestamp
+            return f" [{dt.strftime('%Y-%m-%d %H:%M')}]"
+        except (ValueError, AttributeError):
+            return ""
+
+    def _format_single_message(self, role: str, content: str, time_str: str) -> List[str]:
+        """Format a single message into lines. Returns a list of formatted lines."""
+        if content.startswith('[COMPACTED CONTEXT'):
+            return self._format_compacted_content(content, time_str)
+
+        if content.startswith('[TOOL_RESULTS]'):
+            return self._format_tool_results(role, content, time_str)
+
+        if role == 'ASSISTANT' and content.startswith('['):
+            result = self._format_tool_use_blocks(role, content, time_str)
+            if result is not None:
+                return result
+
+        if content.startswith('[Summary of previous conversation]'):
+            return [
+                f"\n--- PREVIOUS SUMMARY{time_str} ---",
+                content,
+                "--- END PREVIOUS SUMMARY ---\n",
+            ]
+
+        return self._format_regular_message(role, content, time_str)
+
+    @staticmethod
+    def _format_compacted_content(content: str, time_str: str) -> List[str]:
+        """Format a previously compacted context message."""
+        compacted_preview = content[:2000] + "..." if len(content) > 2000 else content
+        return [
+            f"\n--- PREVIOUS COMPACTION{time_str} ---",
+            "[Previous conversation was compacted - key points preserved below]",
+            compacted_preview,
+            "--- END PREVIOUS COMPACTION ---\n",
+        ]
+
+    @staticmethod
+    def _format_tool_results(role: str, content: str, time_str: str) -> List[str]:
+        """Format a tool results message."""
+        lines = [f"\n[{role}]{time_str} Tool Results:"]
+        try:
+            tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+            tool_results = json.loads(tool_results_json)
+            if isinstance(tool_results, list):
+                for i, result in enumerate(tool_results, 1):
+                    if isinstance(result, dict) and result.get('type') == 'tool_result':
+                        tool_id = result.get('tool_use_id', 'unknown')[:8]
+                        result_content = str(result.get('content', ''))
+                        if len(result_content) > 500:
+                            result_content = result_content[:500] + "... [truncated]"
+                        lines.append(f"  Result {i} (tool:{tool_id}): {result_content}")
+        except json.JSONDecodeError:
+            lines.append(f"  [Raw tool results - {len(content)} chars]")
+        return lines
+
+    def _format_tool_use_blocks(self, role: str, content: str, time_str: str) -> Optional[List[str]]:
+        """Format assistant tool-use blocks. Returns None if content is not valid JSON blocks."""
+        try:
+            content_blocks = json.loads(content)
+        except json.JSONDecodeError:
+            return None
+
+        if not isinstance(content_blocks, list):
+            return None
+
+        lines = []
+        text_parts = []
+        tool_calls = []
+        for block in content_blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'text':
+                text_parts.append(block.get('text', ''))
+            elif block.get('type') == 'tool_use':
+                input_summary = self._summarise_tool_input(block.get('input', {}))
+                tool_calls.append(f"{block.get('name', 'unknown')}({input_summary})")
+
+        if text_parts:
+            lines.append(f"\n[{role}]{time_str}")
+            lines.append(''.join(text_parts))
+        if tool_calls:
+            lines.append(f"[Tool calls: {', '.join(tool_calls)}]")
+        return lines
+
+    @staticmethod
+    def _format_regular_message(role: str, content: str, time_str: str) -> List[str]:
+        """Format a regular text message."""
+        lines = [f"\n[{role}]{time_str}"]
+        if len(content) > 3000:
+            remaining = len(content) - 3000
+            lines.append(f"{content[:3000]}\n... [message truncated, {remaining} more chars]")
+        else:
+            lines.append(content)
+        return lines
 
     def _summarise_tool_input(self, tool_input: Dict) -> str:
         """
@@ -644,7 +661,6 @@ class ContextCompactor:
     def _create_compaction_marker(self, original_message_count: int,
                                    original_token_count: int,
                                    compacted_token_count: int,
-                                   model_id: str,
                                    context_window: int) -> str:
         """
         Create a marker string for the compaction event.
@@ -653,7 +669,6 @@ class ContextCompactor:
             original_message_count: Number of messages compacted
             original_token_count: Original token count
             compacted_token_count: Compacted token count
-            model_id: Model used for compaction
             context_window: Model's context window size
 
         Returns:

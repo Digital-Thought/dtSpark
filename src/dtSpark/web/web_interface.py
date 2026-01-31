@@ -124,7 +124,9 @@ class WebInterface:
             True if response was accepted, False if request not found
         """
         if request_id not in self._permission_requests:
-            logger.warning(f"Permission response submitted for unknown request: {request_id}")
+            # Sanitise user-controlled input for safe logging (prevent log injection)
+            safe_id = str(request_id).replace('\n', '').replace('\r', '')
+            logger.warning("Permission response submitted for unknown request: %s", safe_id)
             return False
 
         # Store the response
@@ -133,5 +135,8 @@ class WebInterface:
         # Update request status
         self._permission_requests[request_id]['status'] = 'responded'
 
-        logger.info(f"Permission response submitted for {request_id}: {response}")
+        # Sanitise user-controlled input for safe logging (prevent log injection)
+        safe_id = str(request_id).replace('\n', '').replace('\r', '')
+        safe_response = str(response).replace('\n', '').replace('\r', '')
+        logger.info("Permission response submitted for %s: %s", safe_id, safe_response)
         return True

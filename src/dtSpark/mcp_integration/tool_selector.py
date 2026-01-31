@@ -78,7 +78,6 @@ class ToolSelector:
         relevant_categories = self._detect_categories(user_message, conversation_history)
 
         if not relevant_categories:
-            # If no specific categories detected, include a diverse sample
             logging.info("No specific tool categories detected, selecting diverse sample")
             return self._select_diverse_sample(all_tools, selected_tools)
 
@@ -89,48 +88,56 @@ class ToolSelector:
         for category in relevant_categories:
             relevant_patterns.update(self.TOOL_CATEGORIES.get(category, []))
 
-        # Track selected tool names to avoid duplicates
         selected_tool_names = {t.get('name') for t in selected_tools}
 
-        # Select tools that match the relevant patterns
-        for tool in all_tools:
-            if len(selected_tools) >= self.max_tools_per_request:
-                break
+        # Select tools matching the relevant patterns, then backfill to limit
+        self._add_matching_tools(all_tools, selected_tools, selected_tool_names, relevant_patterns)
+        self._backfill_tools(all_tools, selected_tools, selected_tool_names)
 
-            tool_name = tool.get('name', '')
-            if tool_name in selected_tool_names:
-                continue
-
-            tool_name_lower = tool_name.lower()
-            tool_desc = tool.get('description', '').lower()
-
-            # Check if tool name or description matches any relevant pattern
-            if any(pattern in tool_name_lower or pattern in tool_desc for pattern in relevant_patterns):
-                selected_tools.append(tool)
-                selected_tool_names.add(tool_name)
-
-        # If still below limit and we have room, add some general-purpose tools
-        if len(selected_tools) < self.max_tools_per_request:
-            remaining = self.max_tools_per_request - len(selected_tools)
-            logging.debug(f"Adding up to {remaining} additional tools to reach limit")
-
-            for tool in all_tools:
-                if len(selected_tools) >= self.max_tools_per_request:
-                    break
-
-                tool_name = tool.get('name', '')
-                if tool_name not in selected_tool_names:
-                    selected_tools.append(tool)
-                    selected_tool_names.add(tool_name)
-
-        logging.info(f"Selected {len(selected_tools)} tools from {len(all_tools)} available " +
-                    f"(categories: {', '.join(relevant_categories)})")
-
-        # Log which tools were selected for debugging
-        tool_names = [t.get('name') for t in selected_tools]
-        logging.debug(f"Selected tools: {', '.join(tool_names[:10])}{'...' if len(tool_names) > 10 else ''}")
+        logging.info(f"Selected {len(selected_tools)} tools from {len(all_tools)} available "
+                     f"(categories: {', '.join(relevant_categories)})")
+        self._log_selected_tools(selected_tools)
 
         return selected_tools
+
+    def _add_matching_tools(self, all_tools: List[Dict[str, Any]],
+                            selected: List[Dict[str, Any]],
+                            selected_names: Set[str],
+                            patterns: Set[str]) -> None:
+        """Add tools whose name or description matches any of the given patterns."""
+        for tool in all_tools:
+            if len(selected) >= self.max_tools_per_request:
+                break
+            tool_name = tool.get('name', '')
+            if tool_name in selected_names:
+                continue
+            tool_name_lower = tool_name.lower()
+            tool_desc = tool.get('description', '').lower()
+            if any(p in tool_name_lower or p in tool_desc for p in patterns):
+                selected.append(tool)
+                selected_names.add(tool_name)
+
+    def _backfill_tools(self, all_tools: List[Dict[str, Any]],
+                        selected: List[Dict[str, Any]],
+                        selected_names: Set[str]) -> None:
+        """Fill remaining slots up to max_tools_per_request with unselected tools."""
+        if len(selected) >= self.max_tools_per_request:
+            return
+        remaining = self.max_tools_per_request - len(selected)
+        logging.debug(f"Adding up to {remaining} additional tools to reach limit")
+        for tool in all_tools:
+            if len(selected) >= self.max_tools_per_request:
+                break
+            tool_name = tool.get('name', '')
+            if tool_name not in selected_names:
+                selected.append(tool)
+                selected_names.add(tool_name)
+
+    @staticmethod
+    def _log_selected_tools(selected_tools: List[Dict[str, Any]]) -> None:
+        """Log the names of selected tools for debugging."""
+        tool_names = [t.get('name') for t in selected_tools]
+        logging.debug(f"Selected tools: {', '.join(tool_names[:10])}{'...' if len(tool_names) > 10 else ''}")
 
     def _detect_categories(self, user_message: str,
                           conversation_history: List[Dict[str, Any]] = None) -> Set[str]:
@@ -147,29 +154,29 @@ class ToolSelector:
         categories = set()
 
         # Analyse user message
-        message_lower = user_message.lower()
-        for category, keywords in self.CATEGORY_KEYWORDS.items():
-            if any(keyword in message_lower for keyword in keywords):
-                categories.add(category)
-                logging.debug(f"Category '{category}' detected from user message")
+        self._match_categories(user_message.lower(), categories, source='user message')
 
         # Analyse recent conversation history (last 5 messages)
         if conversation_history:
-            recent_messages = conversation_history[-5:]
-            for msg in recent_messages:
-                # Handle both string content and dict content
-                if isinstance(msg, dict):
-                    content = str(msg.get('content', '')).lower()
-                else:
-                    content = str(msg).lower()
-
-                for category, keywords in self.CATEGORY_KEYWORDS.items():
-                    if any(keyword in content for keyword in keywords):
-                        if category not in categories:
-                            categories.add(category)
-                            logging.debug(f"Category '{category}' detected from conversation history")
+            for msg in conversation_history[-5:]:
+                content = self._extract_message_content(msg)
+                self._match_categories(content, categories, source='conversation history')
 
         return categories
+
+    def _match_categories(self, text: str, categories: Set[str], source: str) -> None:
+        """Match keyword categories against text and add new matches to the set."""
+        for category, keywords in self.CATEGORY_KEYWORDS.items():
+            if category not in categories and any(kw in text for kw in keywords):
+                categories.add(category)
+                logging.debug(f"Category '{category}' detected from {source}")
+
+    @staticmethod
+    def _extract_message_content(msg) -> str:
+        """Extract lowercased text content from a message (dict or string)."""
+        if isinstance(msg, dict):
+            return str(msg.get('content', '')).lower()
+        return str(msg).lower()
 
     def _select_diverse_sample(self, all_tools: List[Dict[str, Any]],
                                already_selected: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -197,34 +204,33 @@ class ToolSelector:
         for category, category_patterns in self.TOOL_CATEGORIES.items():
             if len(selected) >= self.max_tools_per_request:
                 break
+            self._add_category_tools(
+                all_tools, selected, selected_tool_names,
+                category_patterns, tools_per_category,
+            )
 
-            added = 0
-            for tool in all_tools:
-                tool_name = tool.get('name', '')
-                if tool_name in selected_tool_names:
-                    continue
-
-                tool_name_lower = tool_name.lower()
-                tool_desc = tool.get('description', '').lower()
-
-                # Check if tool matches this category
-                if any(pattern in tool_name_lower or pattern in tool_desc for pattern in category_patterns):
-                    selected.append(tool)
-                    selected_tool_names.add(tool_name)
-                    added += 1
-                    if added >= tools_per_category or len(selected) >= self.max_tools_per_request:
-                        break
-
-        # If still below limit, add remaining tools
-        if len(selected) < self.max_tools_per_request:
-            for tool in all_tools:
-                if len(selected) >= self.max_tools_per_request:
-                    break
-
-                tool_name = tool.get('name', '')
-                if tool_name not in selected_tool_names:
-                    selected.append(tool)
-                    selected_tool_names.add(tool_name)
+        # Backfill any remaining slots
+        self._backfill_tools(all_tools, selected, selected_tool_names)
 
         logging.info(f"Selected {len(selected)} diverse tools (no specific category detected)")
         return selected
+
+    def _add_category_tools(self, all_tools: List[Dict[str, Any]],
+                            selected: List[Dict[str, Any]],
+                            selected_names: Set[str],
+                            patterns: List[str],
+                            max_count: int) -> None:
+        """Add up to max_count tools matching the given category patterns."""
+        added = 0
+        for tool in all_tools:
+            if added >= max_count or len(selected) >= self.max_tools_per_request:
+                break
+            tool_name = tool.get('name', '')
+            if tool_name in selected_names:
+                continue
+            tool_name_lower = tool_name.lower()
+            tool_desc = tool.get('description', '').lower()
+            if any(p in tool_name_lower or p in tool_desc for p in patterns):
+                selected.append(tool)
+                selected_names.add(tool_name)
+                added += 1

@@ -176,54 +176,53 @@ class PatternMatcher:
             'detected_patterns': []
         }
 
-        # Check prompt injection
-        if config.get('check_prompt_injection', True):
-            detected, pattern = self.check_prompt_injection(text)
-            if detected:
-                results['violations'].append('prompt_injection')
-                results['detected_patterns'].append(pattern)
-                results['severity'] = 'high'
+        self._scan_check(results, config, 'check_prompt_injection', True,
+                         self.check_prompt_injection, text, 'prompt_injection', 'high')
+        self._scan_check(results, config, 'check_jailbreak', True,
+                         self.check_jailbreak, text, 'jailbreak', 'high')
+        self._scan_check(results, config, 'check_code_injection', True,
+                         self.check_code_injection, text, 'code_injection', 'critical')
+        self._scan_check(results, config, 'check_pii', False,
+                         self.check_pii, text, 'pii_exposure', 'medium')
+        self._scan_check_excessive_length(results, config, text)
+        self._scan_check_repetition(results, text)
 
-        # Check jailbreak
-        if config.get('check_jailbreak', True):
-            detected, pattern = self.check_jailbreak(text)
-            if detected:
-                results['violations'].append('jailbreak')
-                results['detected_patterns'].append(pattern)
-                if results['severity'] == 'none':
-                    results['severity'] = 'high'
+        return results
 
-        # Check code injection
-        if config.get('check_code_injection', True):
-            detected, pattern = self.check_code_injection(text)
-            if detected:
-                results['violations'].append('code_injection')
-                results['detected_patterns'].append(pattern)
-                results['severity'] = 'critical'
+    @staticmethod
+    def _escalate_severity(current: str, proposed: str) -> str:
+        """Return the more severe of two severity levels."""
+        order = ['none', 'low', 'medium', 'high', 'critical']
+        return proposed if order.index(proposed) > order.index(current) else current
 
-        # Check PII
-        if config.get('check_pii', False):
-            detected, pattern = self.check_pii(text)
-            if detected:
-                results['violations'].append('pii_exposure')
-                results['detected_patterns'].append(pattern)
-                if results['severity'] in ['none', 'low']:
-                    results['severity'] = 'medium'
+    def _scan_check(self, results: Dict, config: Dict, config_key: str,
+                    default_enabled: bool, check_fn, text: str,
+                    violation_name: str, severity: str) -> None:
+        """Run a single pattern check and update results if a violation is detected."""
+        if not config.get(config_key, default_enabled):
+            return
+        detected, pattern = check_fn(text)
+        if detected:
+            results['violations'].append(violation_name)
+            results['detected_patterns'].append(pattern)
+            results['severity'] = self._escalate_severity(results['severity'], severity)
 
-        # Check excessive length
-        if config.get('check_excessive_length', True):
-            max_length = config.get('max_prompt_length', 50000)
-            if len(text) > max_length:
-                results['violations'].append('excessive_length')
-                results['detected_patterns'].append(f'Length: {len(text)} > {max_length}')
-                if results['severity'] == 'none':
-                    results['severity'] = 'medium'
+    @staticmethod
+    def _scan_check_excessive_length(results: Dict, config: Dict, text: str) -> None:
+        """Check for excessive prompt length and update results."""
+        if not config.get('check_excessive_length', True):
+            return
+        max_length = config.get('max_prompt_length', 50000)
+        if len(text) > max_length:
+            results['violations'].append('excessive_length')
+            results['detected_patterns'].append(f'Length: {len(text)} > {max_length}')
+            if results['severity'] == 'none':
+                results['severity'] = 'medium'
 
-        # Check excessive repetition
+    def _scan_check_repetition(self, results: Dict, text: str) -> None:
+        """Check for excessive repetition and update results."""
         if self.check_excessive_repetition(text):
             results['violations'].append('excessive_repetition')
             results['detected_patterns'].append('Detected repetitive pattern')
             if results['severity'] == 'none':
                 results['severity'] = 'low'
-
-        return results
