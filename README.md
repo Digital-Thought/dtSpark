@@ -3,6 +3,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=Digital-Thought_dtSpark&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=Digital-Thought_dtSpark)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=Digital-Thought_dtSpark&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=Digital-Thought_dtSpark)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=Digital-Thought_dtSpark&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=Digital-Thought_dtSpark)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=Digital-Thought_dtSpark&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=Digital-Thought_dtSpark)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=Digital-Thought_dtSpark&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=Digital-Thought_dtSpark)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=Digital-Thought_dtSpark&metric=bugs)](https://sonarcloud.io/summary/new_code?id=Digital-Thought_dtSpark)
+
 **Spark** is a powerful, multi-provider LLM interface for conversational AI with integrated tool support. It supports AWS Bedrock, Anthropic Direct API, and Ollama local models through both CLI and Web interfaces.
 
 ## Key Features
