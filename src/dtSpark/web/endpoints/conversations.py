@@ -218,14 +218,11 @@ async def create_conversation(
                         logger.warning("Received file upload without filename")
                         continue
 
-                    # Sanitise filename for safe logging (prevent log injection)
-                    safe_filename = upload_file.filename.replace('\n', '').replace('\r', '')
-
                     # Extract file extension
                     suffix = os.path.splitext(upload_file.filename)[1]
                     if not suffix:
                         upload_errors.append(f"File '{upload_file.filename}' has no file extension")
-                        logger.warning("File %r uploaded without extension", safe_filename)
+                        logger.warning("File uploaded without extension")
                         continue
 
                     # Check if extension is supported (using FileManager's validation)
@@ -235,7 +232,7 @@ async def create_conversation(
                                              FileManager.SUPPORTED_DOCUMENT_FILES |
                                              FileManager.SUPPORTED_IMAGE_FILES):
                         upload_errors.append(f"File type '{suffix}' is not supported for '{upload_file.filename}'")
-                        logger.warning("Unsupported file type %r for file %r", suffix, safe_filename)
+                        logger.warning("Unsupported file type uploaded")
                         continue
 
                     # Create temporary file with proper extension
@@ -247,7 +244,7 @@ async def create_conversation(
                     await asyncio.to_thread(Path(temp_path).write_bytes, content)
 
                     temp_files.append(temp_path)
-                    logger.info("Saved uploaded file '%s' to %s", safe_filename, temp_path)
+                    logger.info("Saved uploaded file to %s", temp_path)
 
                 # Attach files using conversation manager
                 if temp_files:

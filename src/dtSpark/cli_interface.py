@@ -235,7 +235,7 @@ class CLIInterface:
         self.actions_enabled = False  # Can be enabled via autonomous_actions.enabled config
         self._active_status_indicator = None  # Track active status indicator for pause/resume
 
-    def print_splash_screen(self, _full_name: str, description: str, version: str):
+    def print_splash_screen(self, full_name: str, description: str, version: str):  # noqa: S1172
         """
         Print application splash screen with SPARK branding.
 
@@ -298,7 +298,7 @@ class CLIInterface:
         # This is now replaced by print_splash_screen
         pass
 
-    def create_progress(self, _description: str = "Initialising...") -> Progress:
+    def create_progress(self, description: str = "Initialising...") -> Progress:  # noqa: S1172
         """
         Create a progress bar for tracking operations.
 
@@ -1481,7 +1481,7 @@ class CLIInterface:
             f"[dim]({input_str})[/dim]"
         )
 
-    def display_tool_result(self, _tool_name: str, result: str, is_error: bool = False):
+    def display_tool_result(self, tool_name: str, result: str, is_error: bool = False):  # noqa: S1172
         """
         Display a tool result during chat.
 

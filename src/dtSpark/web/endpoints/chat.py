@@ -329,9 +329,7 @@ async def command_attach(
 
                 temp_files.append(temp_path)
                 attached_filenames.append(upload_file.filename)
-                # Sanitise filename for safe logging (prevent log injection)
-                safe_filename = upload_file.filename.replace('\n', '').replace('\r', '')
-                logger.info("Saved uploaded file '%s' to %s", safe_filename, temp_path)
+                logger.info("Saved uploaded file to %s", temp_path)
 
             # Attach files using conversation manager
             if temp_files:

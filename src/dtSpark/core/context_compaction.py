@@ -207,7 +207,7 @@ class ContextCompactor:
 
         return False
 
-    def _perform_compaction(self, conversation_id: int, _model_id: str,
+    def _perform_compaction(self, conversation_id: int, model_id: str,  # noqa: S1172
                             provider: str, limits: Dict[str, int]) -> bool:
         """
         Perform the actual context compaction.
