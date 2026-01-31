@@ -151,7 +151,7 @@ class StreamingManager:
                                         "content": result.get('content', ''),
                                     }),
                                 }
-                        except (json.JSONDecodeError, ValueError):
+                        except ValueError:
                             pass
 
                     elif role == 'assistant' and content.strip().startswith('['):
@@ -179,7 +179,7 @@ class StreamingManager:
                                                 "input": block.get('input', {}),
                                             }),
                                         }
-                        except (json.JSONDecodeError, ValueError):
+                        except ValueError:
                             pass
 
                 last_message_count = len(current_messages)

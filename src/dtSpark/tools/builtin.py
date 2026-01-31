@@ -30,6 +30,7 @@ _DESC_ARCHIVE_PATH = "Path to the archive file"
 _TAR_GZ = 'tar.gz'
 _TAR_BZ2 = 'tar.bz2'
 _TAR_BZ2_MODE = 'r:bz2'
+_TAR_OPEN_MODES = {_TAR_GZ: 'r:gz', _TAR_BZ2: _TAR_BZ2_MODE}
 
 
 
@@ -2071,7 +2072,7 @@ def _execute_list_archive_contents(tool_input: Dict[str, Any],
                         "modified": datetime(*info.date_time).isoformat() if info.date_time else None
                     })
         else:
-            mode = 'r:gz' if archive_type == _TAR_GZ else _TAR_BZ2_MODE if archive_type == _TAR_BZ2 else 'r'
+            mode = _TAR_OPEN_MODES.get(archive_type, 'r')
             with tarfile.open(str(full_path), mode) as tf:
                 count = 0
                 for member in tf:
@@ -2154,7 +2155,7 @@ def _execute_read_archive_file(tool_input: Dict[str, Any],
                     return {"success": False, "error": f"File not found in archive: {file_path}"}
                 content = zf.read(file_path)
         else:
-            mode = 'r:gz' if archive_type == _TAR_GZ else _TAR_BZ2_MODE if archive_type == _TAR_BZ2 else 'r'
+            mode = _TAR_OPEN_MODES.get(archive_type, 'r')
             with tarfile.open(str(full_path), mode) as tf:
                 try:
                     member = tf.getmember(file_path)
@@ -2275,7 +2276,7 @@ def _execute_extract_archive(tool_input: Dict[str, Any],
                         zf.extract(member, str(full_dest_path))
                         extracted_files.append(member)
         else:
-            mode = 'r:gz' if archive_type == _TAR_GZ else _TAR_BZ2_MODE if archive_type == _TAR_BZ2 else 'r'
+            mode = _TAR_OPEN_MODES.get(archive_type, 'r')
             with tarfile.open(str(full_archive_path), mode) as tf:
                 if files_to_extract:
                     members = [tf.getmember(f) for f in files_to_extract if f in tf.getnames()]

@@ -126,7 +126,7 @@ class WebInterface:
         if request_id not in self._permission_requests:
             # Sanitise user-controlled input for safe logging (prevent log injection)
             safe_id = str(request_id).replace('\n', '').replace('\r', '')
-            logger.warning("Permission response submitted for unknown request: %s", safe_id)
+            logger.warning("Permission response submitted for unknown request: %r", safe_id)
             return False
 
         # Store the response

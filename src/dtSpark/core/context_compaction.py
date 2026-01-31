@@ -207,7 +207,7 @@ class ContextCompactor:
 
         return False
 
-    def _perform_compaction(self, conversation_id: int, model_id: str,
+    def _perform_compaction(self, conversation_id: int, _model_id: str,
                             provider: str, limits: Dict[str, int]) -> bool:
         """
         Perform the actual context compaction.
@@ -254,7 +254,7 @@ class ContextCompactor:
                 logging.warning(f"Compaction skipped: {rate_limit_check['message']}")
                 return False
 
-            max_compaction_tokens, prompt_tokens = self._calculate_compaction_tokens(
+            max_compaction_tokens, _ = self._calculate_compaction_tokens(
                 compaction_prompt, original_token_count, limits
             )
 

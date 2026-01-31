@@ -170,7 +170,6 @@ class BedrockPricing:
             service_codes = ['AmazonBedrockFoundationModels', 'AmazonBedrockService', 'AmazonBedrock']
 
             all_price_lists = []
-            successful_service_code = None
 
             for service_code in service_codes:
                 try:
@@ -183,7 +182,6 @@ class BedrockPricing:
                     price_list = response.get('PriceList', [])
                     if price_list:
                         all_price_lists.extend(price_list)
-                        successful_service_code = service_code
                         logging.info(f"Found {len(price_list)} products with service code: {service_code}")
 
                         # Continue fetching if there are more results
@@ -432,7 +430,6 @@ class BedrockPricing:
             for term_key, term_value in on_demand.items():
                 price_dimensions = term_value.get('priceDimensions', {})
                 for dim_key, dim_value in price_dimensions.items():
-                    unit = dim_value.get('unit', '')
                     price_per_unit = float(dim_value.get('pricePerUnit', {}).get('USD', 0))
 
                     # Determine if this is input or output pricing

@@ -235,7 +235,7 @@ class CLIInterface:
         self.actions_enabled = False  # Can be enabled via autonomous_actions.enabled config
         self._active_status_indicator = None  # Track active status indicator for pause/resume
 
-    def print_splash_screen(self, full_name: str, description: str, version: str):
+    def print_splash_screen(self, _full_name: str, description: str, version: str):
         """
         Print application splash screen with SPARK branding.
 
@@ -298,7 +298,7 @@ class CLIInterface:
         # This is now replaced by print_splash_screen
         pass
 
-    def create_progress(self, description: str = "Initialising...") -> Progress:
+    def create_progress(self, _description: str = "Initialising...") -> Progress:
         """
         Create a progress bar for tracking operations.
 
@@ -625,7 +625,7 @@ class CLIInterface:
 
         self.console.print()
         self.print_separator("─")
-        self.console.print(f"\n[bold yellow]🔐 Tool Permission Request[/bold yellow]")
+        self.console.print("\n[bold yellow]🔐 Tool Permission Request[/bold yellow]")
         self.console.print(f"\nThe assistant wants to use the tool: [bold cyan]{tool_name}[/bold cyan]")
 
         if tool_description:
@@ -1353,7 +1353,7 @@ class CLIInterface:
         # Budget section
         if budget_limit > 0:
             content_parts.append("")
-            content_parts.append(f"[bold cyan]Budget Status:[/bold cyan]")
+            content_parts.append("[bold cyan]Budget Status:[/bold cyan]")
             content_parts.append(f"    • Budget Limit: [yellow]${budget_limit:.2f} USD[/yellow]")
 
             if budget_exceeded:
@@ -1481,7 +1481,7 @@ class CLIInterface:
             f"[dim]({input_str})[/dim]"
         )
 
-    def display_tool_result(self, tool_name: str, result: str, is_error: bool = False):
+    def display_tool_result(self, _tool_name: str, result: str, is_error: bool = False):
         """
         Display a tool result during chat.
 
@@ -1563,7 +1563,7 @@ class CLIInterface:
                     found_files = FileManager.scan_directory(str(path.absolute()), recursive=recursive)
 
                     if not found_files:
-                        self.print_warning(f"  No supported files found in directory")
+                        self.print_warning("  No supported files found in directory")
                         continue
 
                     self.print_success(f"  Found {len(found_files)} supported file(s)")
@@ -1613,7 +1613,6 @@ class CLIInterface:
 
             else:
                 self.print_error(f"Invalid path type: {input_path}")
-                continue
 
         if file_attachments:
             self.console.print()
@@ -1789,7 +1788,7 @@ class CLIInterface:
         self.console.print()
         try:
             input_formatted = json.dumps(json.loads(transaction['tool_input']), indent=2)
-        except (json.JSONDecodeError, ValueError):
+        except ValueError:
             input_formatted = transaction['tool_input']
 
         self.console.print(Panel(

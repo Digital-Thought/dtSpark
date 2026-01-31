@@ -10,9 +10,11 @@ Provides REST API for conversation operations:
 
 """
 
+import asyncio
 import logging
 import tempfile
 import os
+from pathlib import Path
 from typing import Optional, List
 from datetime import datetime
 
@@ -223,7 +225,7 @@ async def create_conversation(
                     suffix = os.path.splitext(upload_file.filename)[1]
                     if not suffix:
                         upload_errors.append(f"File '{upload_file.filename}' has no file extension")
-                        logger.warning("File '%s' uploaded without extension", safe_filename)
+                        logger.warning("File %r uploaded without extension", safe_filename)
                         continue
 
                     # Check if extension is supported (using FileManager's validation)
@@ -233,17 +235,16 @@ async def create_conversation(
                                              FileManager.SUPPORTED_DOCUMENT_FILES |
                                              FileManager.SUPPORTED_IMAGE_FILES):
                         upload_errors.append(f"File type '{suffix}' is not supported for '{upload_file.filename}'")
-                        logger.warning("Unsupported file type '%s' for file '%s'", suffix, safe_filename)
+                        logger.warning("Unsupported file type %r for file %r", suffix, safe_filename)
                         continue
 
                     # Create temporary file with proper extension
                     temp_fd, temp_path = tempfile.mkstemp(suffix=suffix)
                     os.close(temp_fd)
 
-                    # Write uploaded content to temp file
+                    # Write uploaded content to temp file asynchronously
                     content = await upload_file.read()
-                    with open(temp_path, 'wb') as f:
-                        f.write(content)
+                    await asyncio.to_thread(Path(temp_path).write_bytes, content)
 
                     temp_files.append(temp_path)
                     logger.info("Saved uploaded file '%s' to %s", safe_filename, temp_path)

@@ -479,7 +479,7 @@ class ConversationManager:
                                     text_parts.append(block.get('text', ''))
                             if text_parts:
                                 return '\n'.join(text_parts)
-                    except (json.JSONDecodeError, ValueError):
+                    except ValueError:
                         # Not JSON, return as-is
                         pass
 
@@ -602,7 +602,7 @@ class ConversationManager:
                         # Move cutoff back to include this tool_use and its result
                         cutoff_index -= 1
                         messages_to_keep_count += 1
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     pass
 
         messages_to_summarise = messages[:cutoff_index] if cutoff_index > 0 else []
@@ -795,7 +795,7 @@ class ConversationManager:
             # Try to parse as JSON
             try:
                 data = json.loads(content)
-            except (json.JSONDecodeError, ValueError):
+            except ValueError:
                 # Not JSON, try to extract numbers from text
                 data = None
 
@@ -894,7 +894,7 @@ class ConversationManager:
                         conversation_text.append(f"{role}: {' '.join(text_parts)}")
                     if tool_parts:
                         conversation_text.append(f"{role}: [Called tools: {', '.join(tool_parts)}]")
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     # If parsing fails, include content as-is
                     conversation_text.append(f"{role}: {content}")
             else:
@@ -2406,7 +2406,7 @@ Current date and time: {datetime_str}"""
                     content_blocks = json.loads(content)
                     if isinstance(content_blocks, list) and any(block.get('type') == 'tool_use' for block in content_blocks):
                         is_tool_call = True
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     pass
 
             # Format role header based on message type
@@ -2438,7 +2438,7 @@ Current date and time: {datetime_str}"""
                         md_lines.append(f"- Tool: `{result.get('tool_use_id', 'unknown')}`")
                         md_lines.append(f"  Result: {result.get('content', '')}")
                     md_lines.append("")
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     md_lines.append(content)
                     md_lines.append("")
             elif content.startswith(_TOOL_RESULTS_MARKER) and not include_tools:
@@ -2457,7 +2457,7 @@ Current date and time: {datetime_str}"""
                             md_lines.append(f"**Tool Call:** `{block.get('name')}`")
                             md_lines.append(f"**Input:** {json.dumps(block.get('input', {}), indent=2)}")
                             md_lines.append("")
-                except (json.JSONDecodeError, ValueError):
+                except ValueError:
                     md_lines.append(content)
                     md_lines.append("")
             else:
@@ -2831,7 +2831,7 @@ Current date and time: {datetime_str}"""
                         content_blocks = json.loads(content)
                         if isinstance(content_blocks, list) and any(block.get('type') == 'tool_use' for block in content_blocks):
                             is_tool_call = True
-                    except (json.JSONDecodeError, ValueError):
+                    except ValueError:
                         pass
 
                 # Assign message class and labels based on type
@@ -2881,7 +2881,7 @@ Current date and time: {datetime_str}"""
 ''')
                         html_parts.append('''                        </div>
 ''')
-                    except (json.JSONDecodeError, ValueError):
+                    except ValueError:
                         html_parts.append(f'''                        {content.replace('<', '&lt;').replace('>', '&gt;')}
 ''')
                 elif content.startswith(_TOOL_RESULTS_MARKER) and not include_tools:
@@ -2900,7 +2900,7 @@ Current date and time: {datetime_str}"""
                             <pre>{json.dumps(block.get('input', {}), indent=2)}</pre>
                         </div>
 ''')
-                    except (json.JSONDecodeError, ValueError):
+                    except ValueError:
                         html_parts.append(f'''                        {content.replace('<', '&lt;').replace('>', '&gt;')}
 ''')
                 else:
@@ -3004,7 +3004,7 @@ Current date and time: {datetime_str}"""
                             content_blocks = json.loads(content)
                             if isinstance(content_blocks, list) and any(block.get('type') == 'tool_use' for block in content_blocks):
                                 is_tool_call = True
-                        except (json.JSONDecodeError, ValueError):
+                        except ValueError:
                             pass
 
                     # Assign type label
@@ -3024,7 +3024,7 @@ Current date and time: {datetime_str}"""
                                 tool_results_json = content.replace(_TOOL_RESULTS_MARKER, '', 1)
                                 tool_results = json.loads(tool_results_json)
                                 content = f"Tool Results: {json.dumps(tool_results, indent=2)}"
-                            except (json.JSONDecodeError, ValueError):
+                            except ValueError:
                                 pass
                         else:
                             content = "[Tool execution details omitted]"
@@ -3038,7 +3038,7 @@ Current date and time: {datetime_str}"""
                                 elif block.get('type') == 'tool_use' and include_tools:
                                     text_parts.append(f"Tool Call: {block.get('name')} - Input: {json.dumps(block.get('input', {}))}")
                             content = '\n'.join(text_parts) if text_parts else content
-                        except (json.JSONDecodeError, ValueError):
+                        except ValueError:
                             pass
 
                     writer.writerow({

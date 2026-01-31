@@ -10,9 +10,11 @@ Provides REST API for chat operations:
 
 """
 
+import asyncio
 import logging
 import tempfile
 import os
+from pathlib import Path
 from typing import Optional, List
 from datetime import datetime
 
@@ -321,10 +323,9 @@ async def command_attach(
                 temp_fd, temp_path = tempfile.mkstemp(suffix=suffix)
                 os.close(temp_fd)
 
-                # Write uploaded content to temp file
+                # Write uploaded content to temp file asynchronously
                 content = await upload_file.read()
-                with open(temp_path, 'wb') as f:
-                    f.write(content)
+                await asyncio.to_thread(Path(temp_path).write_bytes, content)
 
                 temp_files.append(temp_path)
                 attached_filenames.append(upload_file.filename)
