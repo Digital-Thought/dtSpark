@@ -177,6 +177,13 @@ async def create_conversation(
         ConversationDetail for the created conversation
     """
     try:
+        # Check if new conversations are allowed
+        if not getattr(request.app.state, 'new_conversations_allowed', True):
+            raise HTTPException(
+                status_code=403,
+                detail="Creating new conversations is disabled by configuration"
+            )
+
         app_instance = request.app.state.app_instance
         database = app_instance.database
         conversation_manager = app_instance.conversation_manager

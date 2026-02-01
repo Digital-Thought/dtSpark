@@ -239,9 +239,11 @@
             <div class="col-12">
                 <h5 class="mb-3"><i class="bi bi-lightning-fill"></i> Quick Actions</h5>
                 <div class="d-grid gap-3 d-md-flex">
+                    {% if new_conversations_allowed %}
                     <a href="/conversations/new" class="btn btn-primary quick-action-btn flex-fill">
                         <i class="bi bi-plus-circle-fill"></i> Start New Conversation
                     </a>
+                    {% endif %}
                     <a href="/conversations" class="btn btn-outline-primary quick-action-btn flex-fill">
                         <i class="bi bi-list-ul"></i> View Conversations
                     </a>

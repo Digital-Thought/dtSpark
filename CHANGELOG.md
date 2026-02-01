@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.0a6] - 2026-02-01
 
+### Added
+- `predefined_conversations.allow_new_conversations` configuration option to control whether users can create new ad-hoc conversations
+  - When disabled, "Start New Conversation" is hidden from CLI menu, Web UI navigation, main menu, and conversations page
+  - `POST /api/conversations` returns 403 when disabled
+  - `GET /conversations/new` redirects to conversations list when disabled
+  - Existing and predefined conversations remain fully accessible
+
 ### Changed
 - Updated dtPyAppFramework dependency to >=4.1.2
 

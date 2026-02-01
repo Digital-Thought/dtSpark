@@ -19,9 +19,11 @@
     <div class="col-12">
         <h2 class="mb-4">
             <i class="bi bi-list-ul"></i> Conversations
+            {% if new_conversations_allowed %}
             <button class="btn btn-primary float-end" onclick="showNewConversationModal()">
                 <i class="bi bi-plus-circle-fill"></i> New Conversation
             </button>
+            {% endif %}
         </h2>
     </div>
 </div>
@@ -69,6 +71,7 @@
     </div>
 </div>
 
+{% if new_conversations_allowed %}
 <!-- New Conversation Modal -->
 <div class="modal fade" id="newConversationModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -141,6 +144,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}

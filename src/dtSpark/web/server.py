@@ -305,6 +305,7 @@ def create_app(
 
     # Determine feature flags from app instance
     actions_enabled = getattr(app_instance, 'actions_enabled', False)
+    new_conversations_allowed = getattr(app_instance, 'new_conversations_allowed', True)
 
     # Read heartbeat configuration
     from dtPyAppFramework.settings import Settings as _Settings
@@ -319,6 +320,7 @@ def create_app(
     templates.env.globals['app_description'] = description()
     templates.env.globals['agent_name'] = agent_name()
     templates.env.globals['actions_enabled'] = actions_enabled
+    templates.env.globals['new_conversations_allowed'] = new_conversations_allowed
     templates.env.globals['heartbeat_enabled'] = heartbeat_enabled
     templates.env.globals['heartbeat_interval_ms'] = heartbeat_interval * 1000
 
@@ -332,6 +334,7 @@ def create_app(
     app.state.templates = templates
     app.state.dark_theme = dark_theme
     app.state.cost_tracking_enabled = cost_tracking_enabled
+    app.state.new_conversations_allowed = new_conversations_allowed
 
     # Session dependency
     async def get_session(session_id: Optional[str] = Cookie(default=None)) -> str:
@@ -538,6 +541,8 @@ def create_app(
     @app.get("/conversations/new", response_class=HTMLResponse)
     async def new_conversation_page(request: Request, session_id: str = Depends(get_session)):
         """Display new conversation creation page."""
+        if not new_conversations_allowed:
+            return RedirectResponse(url="/conversations", status_code=303)
         return templates.TemplateResponse(
             "new_conversation.html",
             {

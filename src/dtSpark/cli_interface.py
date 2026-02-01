@@ -233,6 +233,7 @@ class CLIInterface:
         self.model_changing_enabled = True  # Can be disabled if model is locked via config
         self.cost_tracking_enabled = False  # Can be enabled via config
         self.actions_enabled = False  # Can be enabled via autonomous_actions.enabled config
+        self.new_conversations_allowed = True  # Can be disabled via predefined_conversations.allow_new_conversations
         self._active_status_indicator = None  # Track active status indicator for pause/resume
 
     def print_splash_screen(self, full_name: str, description: str, version: str):  # noqa: S1172
@@ -383,12 +384,13 @@ class CLIInterface:
             choice_map[str(option_num)] = 'costs'
             option_num += 1
 
-        # Start New Conversation
-        menu_content.append("  ", style="")
-        menu_content.append(str(option_num), style="cyan")
-        menu_content.append(". Start New Conversation\n", style="")
-        choice_map[str(option_num)] = 'new'
-        option_num += 1
+        # Start New Conversation (only when new conversations are allowed)
+        if self.new_conversations_allowed:
+            menu_content.append("  ", style="")
+            menu_content.append(str(option_num), style="cyan")
+            menu_content.append(". Start New Conversation\n", style="")
+            choice_map[str(option_num)] = 'new'
+            option_num += 1
 
         # List and Select Conversation
         menu_content.append("  ", style="")

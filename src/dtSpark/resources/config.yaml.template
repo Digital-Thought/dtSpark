@@ -420,6 +420,7 @@ aws_comprehend:
 #
 predefined_conversations:
   enabled: false  # Set to true to enable predefined conversations
+  allow_new_conversations: true  # Set to false to restrict users to predefined/existing conversations only
 
   conversations:
     # Example 1: Code Review Assistant with inline instructions

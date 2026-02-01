@@ -386,6 +386,7 @@ class AWSBedrockCLI(AbstractApp):
                 cost_tracking_enabled = self.settings.get(_SETTING_COST_TRACKING, False)
             self.cli.cost_tracking_enabled = cost_tracking_enabled
             self.cli.actions_enabled = self._get_nested_setting('autonomous_actions.enabled', False)
+            self.cli.new_conversations_allowed = self._get_nested_setting('predefined_conversations.allow_new_conversations', True)
 
             progress.update(task_config, advance=100)
 
@@ -809,6 +810,7 @@ class AWSBedrockCLI(AbstractApp):
 
             # Task 7: Initialise autonomous action scheduler (if enabled)
             self.actions_enabled = self._get_nested_setting('autonomous_actions.enabled', False)
+            self.new_conversations_allowed = self._get_nested_setting('predefined_conversations.allow_new_conversations', True)
             task_scheduler = progress.add_task("[cyan]Initialising action scheduler...", total=100)
 
             if not self.actions_enabled:
