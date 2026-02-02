@@ -361,7 +361,11 @@ def _get_filesystem_tools(fs_config: Dict[str, Any]) -> List[Dict[str, Any]]:
         tools.extend([
             {
                 "name": "write_file",
-                "description": f"Write content to a file within the allowed path ({allowed_path}). "
+                "description": f"Write text content to a file within the allowed path ({allowed_path}). "
+                              "Use this tool for creating or updating ANY text-based file including HTML, CSS, JavaScript, "
+                              "JSON, YAML, XML, Python, Markdown, plain text, config files, and all other non-binary formats. "
+                              "Do NOT use the Microsoft Office tools (create_word_document, create_excel_document, "
+                              "create_powerpoint_document) for text-based file formats. "
                               "Creates the file if it doesn't exist, or overwrites if it exists. "
                               "Parent directories must already exist (use create_directories first if needed).",
                 "input_schema": {
@@ -1037,6 +1041,8 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
             {
                 "name": "create_word_document",
                 "description": f"Create a Microsoft Word document (.docx) within the allowed path ({allowed_path}). "
+                              "ONLY use this tool when the user specifically requests a Word/.docx file. "
+                              "Do NOT use this for HTML, plain text, Markdown, or other text-based formats — use write_file instead. "
                               "Supports creating from scratch with structured content, or using a template with placeholder replacement. "
                               "When using a template, placeholders in the format {{{{placeholder_name}}}} will be replaced with provided values.",
                 "input_schema": {
@@ -1080,6 +1086,8 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
             {
                 "name": "create_excel_document",
                 "description": f"Create a Microsoft Excel document (.xlsx) within the allowed path ({allowed_path}). "
+                              "ONLY use this tool when the user specifically requests an Excel/.xlsx spreadsheet. "
+                              "Do NOT use this for CSV or other text-based tabular formats — use write_file instead. "
                               "Creates spreadsheets from structured data. Supports multiple sheets.",
                 "input_schema": {
                     "type": "object",
@@ -1112,6 +1120,8 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
             {
                 "name": "create_powerpoint_document",
                 "description": f"Create a Microsoft PowerPoint document (.pptx) within the allowed path ({allowed_path}). "
+                              "ONLY use this tool when the user specifically requests a PowerPoint/.pptx presentation. "
+                              "Do NOT use this for HTML presentations or other text-based formats — use write_file instead. "
                               "Creates presentations with title and content slides. Supports templates with placeholder replacement.",
                 "input_schema": {
                     "type": "object",

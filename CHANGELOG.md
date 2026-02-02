@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `GET /conversations/new` redirects to conversations list when disabled
   - Existing and predefined conversations remain fully accessible
 
+### Fixed
+- Improved embedded tool descriptions to prevent LLM from using Microsoft Office tools (Word, Excel, PowerPoint) for text-based file formats (HTML, CSS, JS, etc.)
+  - `write_file` description now explicitly lists supported text-based formats
+  - Office tool descriptions now clarify they should only be used for their specific binary formats
+- Removed overly generic `document` keyword from tool selector categories to reduce false matches
+
 ### Changed
 - Updated dtPyAppFramework dependency to >=4.2.1
 

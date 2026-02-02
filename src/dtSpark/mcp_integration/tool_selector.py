@@ -21,7 +21,7 @@ class ToolSelector:
         'aws_infrastructure': ['ec2', 's3', 'lambda', 'cloudwatch', 'iam', 'vpc', 'rds', 'dynamodb', 'diagram'],
         'elasticsearch': ['elasticsearch', 'search', 'index', 'query', 'aggregation'],
         'ragstore': ['ragstore', 'rag', 'embedding', 'vector', 'semantic'],
-        'documents': ['word', 'excel', 'powerpoint', 'pdf', 'document', 'docx', 'xlsx', 'pptx', 'spreadsheet'],
+        'documents': ['word', 'excel', 'powerpoint', 'pdf', 'docx', 'xlsx', 'pptx', 'spreadsheet'],
         'archives': ['archive', 'zip', 'tar', 'extract', 'compress', 'tgz'],
     }
 
@@ -38,8 +38,8 @@ class ToolSelector:
                               'vpc', 'subnet', 'instance', 'bucket', 'function', 'diagram'],
         'elasticsearch': ['elasticsearch', 'search', 'query', 'index', 'log', 'aggregate'],
         'ragstore': ['ragstore', 'rag', 'embedding', 'semantic', 'vector', 'similarity'],
-        'documents': ['document', 'word', 'excel', 'powerpoint', 'pdf', 'docx', 'xlsx', 'pptx',
-                     'spreadsheet', 'presentation', 'template', 'office'],
+        'documents': ['word doc', 'excel', 'powerpoint', 'pdf', 'docx', 'xlsx', 'pptx',
+                     'spreadsheet', 'presentation', 'office'],
         'archives': ['archive', 'zip', 'tar', 'extract', 'unzip', 'compressed', 'tgz'],
     }
 
