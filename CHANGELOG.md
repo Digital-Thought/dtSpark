@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0a7] - 2026-02-01
+## [1.1.0a8] - 2026-02-02
 
 ### Added
 - `predefined_conversations.allow_new_conversations` configuration option to control whether users can create new ad-hoc conversations
