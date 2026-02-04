@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0a9] - 2026-02-04
+## [1.1.0a10] - 2026-02-04
 
 ### Added
 - `predefined_conversations.allow_new_conversations` configuration option to control whether users can create new ad-hoc conversations
@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved embedded tool descriptions to prevent LLM from using Microsoft Office tools (Word, Excel, PowerPoint) for text-based file formats (HTML, CSS, JS, etc.)
   - `write_file` description now explicitly lists supported text-based formats
   - Office tool descriptions now clarify they should only be used for their specific binary formats
+- Improved `create_word_document`, `create_excel_document`, and `create_powerpoint_document` tool descriptions with:
+  - Clear warnings that content parameters are required to avoid empty documents
+  - Inline examples showing the correct parameter structure
+  - Better documentation of required vs optional parameters
 - Removed overly generic `document` keyword from tool selector categories to reduce false matches
 
 ### Changed

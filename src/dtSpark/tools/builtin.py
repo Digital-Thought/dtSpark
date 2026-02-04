@@ -1043,8 +1043,9 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "description": f"Create a Microsoft Word document (.docx) within the allowed path ({allowed_path}). "
                               "ONLY use this tool when the user specifically requests a Word/.docx file. "
                               "Do NOT use this for HTML, plain text, Markdown, or other text-based formats — use write_file instead. "
-                              "Supports creating from scratch with structured content, or using a template with placeholder replacement. "
-                              "When using a template, placeholders in the format {{{{placeholder_name}}}} will be replaced with provided values.",
+                              "CRITICAL: You MUST provide 'content' with 'title' and 'paragraphs' to create a document with actual content. "
+                              "If you only provide 'path' without 'content', the document will be EMPTY. "
+                              "Example: {{\"path\": \"doc.docx\", \"content\": {{\"title\": \"My Title\", \"paragraphs\": [{{\"text\": \"First paragraph\", \"style\": \"Normal\"}}]}}}}",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -1054,29 +1055,31 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                         },
                         "content": {
                             "type": "object",
-                            "description": "Document content structure",
+                            "description": "REQUIRED to create a document with content. Without this, document will be empty.",
                             "properties": {
-                                "title": {"type": "string", "description": "Document title"},
+                                "title": {"type": "string", "description": "Document title displayed at top"},
                                 "paragraphs": {
                                     "type": "array",
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "text": {"type": "string"},
-                                            "style": {"type": "string", "description": "Style: Normal, Heading 1, Heading 2, Heading 3, Title"}
-                                        }
+                                            "text": {"type": "string", "description": "The paragraph text"},
+                                            "style": {"type": "string", "description": "Normal, Heading 1, Heading 2, Heading 3, or Title. Defaults to Normal."}
+                                        },
+                                        "required": ["text"]
                                     },
-                                    "description": "List of paragraphs with optional styles"
+                                    "description": "Array of paragraphs with 'text' (required) and 'style' (optional)"
                                 }
-                            }
+                            },
+                            "required": ["title", "paragraphs"]
                         },
                         "template_path": {
                             "type": "string",
-                            "description": "Path to a .docx template file. If provided, placeholders will be replaced."
+                            "description": "Alternative to 'content': path to a .docx template file with {{placeholder}} markers"
                         },
                         "placeholders": {
                             "type": "object",
-                            "description": "Dictionary of placeholder names to values for template replacement",
+                            "description": "Only with template_path: dictionary mapping placeholder names to replacement values",
                             "additionalProperties": {"type": "string"}
                         }
                     },
@@ -1088,7 +1091,8 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "description": f"Create a Microsoft Excel document (.xlsx) within the allowed path ({allowed_path}). "
                               "ONLY use this tool when the user specifically requests an Excel/.xlsx spreadsheet. "
                               "Do NOT use this for CSV or other text-based tabular formats — use write_file instead. "
-                              "Creates spreadsheets from structured data. Supports multiple sheets.",
+                              "CRITICAL: You MUST provide 'sheets' array with sheet data. "
+                              "Example: {{\"path\": \"data.xlsx\", \"sheets\": [{{\"name\": \"Sheet1\", \"headers\": [\"Col1\", \"Col2\"], \"data\": [[\"A\", \"B\"]]}}]}}",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -1122,7 +1126,8 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "description": f"Create a Microsoft PowerPoint document (.pptx) within the allowed path ({allowed_path}). "
                               "ONLY use this tool when the user specifically requests a PowerPoint/.pptx presentation. "
                               "Do NOT use this for HTML presentations or other text-based formats — use write_file instead. "
-                              "Creates presentations with title and content slides. Supports templates with placeholder replacement.",
+                              "CRITICAL: You MUST provide 'slides' array with slide content. "
+                              "Example: {{\"path\": \"pres.pptx\", \"slides\": [{{\"layout\": \"title\", \"title\": \"My Title\", \"content\": [\"Bullet 1\"]}}]}}",
                 "input_schema": {
                     "type": "object",
                     "properties": {
