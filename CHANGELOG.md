@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0a8] - 2026-02-02
+## [1.1.0a9] - 2026-02-04
 
 ### Added
 - `predefined_conversations.allow_new_conversations` configuration option to control whether users can create new ad-hoc conversations
@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `POST /api/conversations` returns 403 when disabled
   - `GET /conversations/new` redirects to conversations list when disabled
   - Existing and predefined conversations remain fully accessible
+
+### Changed
+- Web UI: Tool calls now appear on the left side (like assistant messages), tool results on the right side (like user messages)
+- Web UI: Tool calls and results are now collapsible by default, showing just the summary (e.g., "Tool Call: tool_name")
+- Web UI: Added copy-to-clipboard and expand/collapse icons to tool call and result bubbles
 
 ### Fixed
 - Improved embedded tool descriptions to prevent LLM from using Microsoft Office tools (Word, Excel, PowerPoint) for text-based file formats (HTML, CSS, JS, etc.)

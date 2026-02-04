@@ -167,19 +167,34 @@ function appendToolResults(content, timestamp = null) {
 
         if (Array.isArray(results)) {
             results.forEach((result, index) => {
+                const toolId = generateToolId();
                 const resultDiv = document.createElement('div');
                 resultDiv.className = 'tool-result';
+                resultDiv.id = toolId;
 
-                const toolId = result.tool_use_id || 'unknown';
+                const toolUseId = result.tool_use_id || 'unknown';
                 const resultContent = result.content || JSON.stringify(result);
+                const formattedContent = typeof resultContent === 'string' ? resultContent : JSON.stringify(resultContent, null, 2);
 
                 resultDiv.innerHTML = `
-                    <div class="small">
-                        <strong><i class="bi bi-check-circle-fill"></i> Tool Result ${index + 1}:</strong>
-                        <code>${escapeHtml(toolId)}</code>
-                        ${timestamp ? `<span class="ms-2">${formatTimestamp(timestamp)}</span>` : ''}
+                    <div class="tool-header small" onclick="toggleToolContent('${toolId}')">
+                        <div class="tool-header-left">
+                            <strong><i class="bi bi-check-circle-fill"></i> Tool Result ${index + 1}:</strong>
+                            <code>${escapeHtml(toolUseId)}</code>
+                            ${timestamp ? `<span class="ms-2">${formatTimestamp(timestamp)}</span>` : ''}
+                        </div>
+                        <div class="tool-header-icons">
+                            <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                            <button onclick="event.stopPropagation(); toggleToolContent('${toolId}')" title="Expand/Collapse">
+                                <i class="bi bi-chevron-down" id="${toolId}-toggle-icon"></i>
+                            </button>
+                        </div>
                     </div>
-                    <pre class="small mb-0 mt-1">${escapeHtml(typeof resultContent === 'string' ? resultContent : JSON.stringify(resultContent, null, 2))}</pre>
+                    <div class="tool-content" id="${toolId}-content">
+                        <pre class="small mb-0">${escapeHtml(formattedContent)}</pre>
+                    </div>
                 `;
 
                 messagesContainer.appendChild(resultDiv);
@@ -188,11 +203,27 @@ function appendToolResults(content, timestamp = null) {
     } catch (e) {
         console.error('Error parsing tool results:', e);
         // Fall back to displaying the raw content
+        const toolId = generateToolId();
         const resultDiv = document.createElement('div');
         resultDiv.className = 'tool-result';
+        resultDiv.id = toolId;
         resultDiv.innerHTML = `
-            <div class="small"><strong><i class="bi bi-check-circle-fill"></i> Tool Results</strong></div>
-            <pre class="small mb-0 mt-1">${escapeHtml(content)}</pre>
+            <div class="tool-header small" onclick="toggleToolContent('${toolId}')">
+                <div class="tool-header-left">
+                    <strong><i class="bi bi-check-circle-fill"></i> Tool Results</strong>
+                </div>
+                <div class="tool-header-icons">
+                    <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                    <button onclick="event.stopPropagation(); toggleToolContent('${toolId}')" title="Expand/Collapse">
+                        <i class="bi bi-chevron-down" id="${toolId}-toggle-icon"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="tool-content" id="${toolId}-content">
+                <pre class="small mb-0">${escapeHtml(content)}</pre>
+            </div>
         `;
         messagesContainer.appendChild(resultDiv);
     }
@@ -226,20 +257,78 @@ function appendRollupSummary(content, timestamp = null) {
 }
 
 /**
+ * Generate a unique ID for tool elements
+ * @returns {string} Unique ID
+ */
+function generateToolId() {
+    return 'tool-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
+/**
+ * Toggle tool content visibility
+ * @param {string} toolId - ID of the tool element
+ */
+function toggleToolContent(toolId) {
+    const content = document.getElementById(toolId + '-content');
+    const icon = document.getElementById(toolId + '-toggle-icon');
+    if (content && icon) {
+        content.classList.toggle('expanded');
+        icon.className = content.classList.contains('expanded')
+            ? 'bi bi-chevron-up'
+            : 'bi bi-chevron-down';
+    }
+}
+
+/**
+ * Copy tool content to clipboard
+ * @param {string} toolId - ID of the tool element
+ */
+function copyToolContent(toolId) {
+    const content = document.getElementById(toolId + '-content');
+    if (content) {
+        const pre = content.querySelector('pre');
+        if (pre) {
+            navigator.clipboard.writeText(pre.textContent).then(() => {
+                const btn = document.querySelector(`#${toolId} .tool-copy-btn`);
+                if (btn) {
+                    const originalIcon = btn.innerHTML;
+                    btn.innerHTML = '<i class="bi bi-check"></i>';
+                    setTimeout(() => { btn.innerHTML = originalIcon; }, 1500);
+                }
+            });
+        }
+    }
+}
+
+/**
  * Append a tool call message
  * @param {string} toolName - Tool name
  * @param {object} toolInput - Tool input parameters
  */
 function appendToolCall(toolName, toolInput) {
     const messagesContainer = document.getElementById('chat-messages');
+    const toolId = generateToolId();
 
     const toolDiv = document.createElement('div');
     toolDiv.className = 'tool-call';
+    toolDiv.id = toolId;
     toolDiv.innerHTML = `
-        <div class="small">
-            <strong><i class="bi bi-tools"></i> Tool Call:</strong> <code>${escapeHtml(toolName)}</code>
+        <div class="tool-header small" onclick="toggleToolContent('${toolId}')">
+            <div class="tool-header-left">
+                <strong><i class="bi bi-tools"></i> Tool Call:</strong> <code>${escapeHtml(toolName)}</code>
+            </div>
+            <div class="tool-header-icons">
+                <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
+                    <i class="bi bi-clipboard"></i>
+                </button>
+                <button onclick="event.stopPropagation(); toggleToolContent('${toolId}')" title="Expand/Collapse">
+                    <i class="bi bi-chevron-down" id="${toolId}-toggle-icon"></i>
+                </button>
+            </div>
         </div>
-        <pre class="small mb-0 mt-1">${escapeHtml(JSON.stringify(toolInput, null, 2))}</pre>
+        <div class="tool-content" id="${toolId}-content">
+            <pre class="small mb-0">${escapeHtml(JSON.stringify(toolInput, null, 2))}</pre>
+        </div>
     `;
 
     messagesContainer.appendChild(toolDiv);
@@ -248,19 +337,33 @@ function appendToolCall(toolName, toolInput) {
 
 /**
  * Append a tool result message
- * @param {string} toolName - Tool name
+ * @param {string} toolName - Tool name or tool_use_id
  * @param {object} toolResult - Tool result data
  */
 function appendToolResult(toolName, toolResult) {
     const messagesContainer = document.getElementById('chat-messages');
+    const toolId = generateToolId();
 
     const resultDiv = document.createElement('div');
     resultDiv.className = 'tool-result';
+    resultDiv.id = toolId;
     resultDiv.innerHTML = `
-        <div class="small">
-            <strong><i class="bi bi-check-circle-fill"></i> Tool Result:</strong> <code>${escapeHtml(toolName)}</code>
+        <div class="tool-header small" onclick="toggleToolContent('${toolId}')">
+            <div class="tool-header-left">
+                <strong><i class="bi bi-check-circle-fill"></i> Tool Result:</strong> <code>${escapeHtml(toolName)}</code>
+            </div>
+            <div class="tool-header-icons">
+                <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
+                    <i class="bi bi-clipboard"></i>
+                </button>
+                <button onclick="event.stopPropagation(); toggleToolContent('${toolId}')" title="Expand/Collapse">
+                    <i class="bi bi-chevron-down" id="${toolId}-toggle-icon"></i>
+                </button>
+            </div>
         </div>
-        <pre class="small mb-0 mt-1">${escapeHtml(JSON.stringify(toolResult, null, 2))}</pre>
+        <div class="tool-content" id="${toolId}-content">
+            <pre class="small mb-0">${escapeHtml(JSON.stringify(toolResult, null, 2))}</pre>
+        </div>
     `;
 
     messagesContainer.appendChild(resultDiv);

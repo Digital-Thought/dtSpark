@@ -101,19 +101,71 @@ body {
     overflow-x: auto;
 }
 
-/* Tool calls */
+/* Tool calls - aligned left like assistant messages */
 .tool-call {
     background-color: #2a3a4a;
     padding: 0.75rem;
     margin: 0.5rem 0;
-    border-radius: 0.25rem;
+    margin-right: 20%;
+    border-radius: 0.5rem;
 }
 
+/* Tool results - aligned right like user messages */
 .tool-result {
     background-color: #3a3a2a;
     padding: 0.75rem;
     margin: 0.5rem 0;
-    border-radius: 0.25rem;
+    margin-left: 20%;
+    border-radius: 0.5rem;
+}
+
+/* Tool message header with icons */
+.tool-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+}
+
+.tool-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tool-header-icons {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.tool-header-icons button {
+    background: none;
+    border: none;
+    color: #aaa;
+    padding: 0.25rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: color 0.2s;
+}
+
+.tool-header-icons button:hover {
+    color: #fff;
+}
+
+/* Tool content - collapsible */
+.tool-content {
+    display: none;
+    margin-top: 0.5rem;
+}
+
+.tool-content.expanded {
+    display: block;
+}
+
+.tool-content pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 /* Rollup summary */
