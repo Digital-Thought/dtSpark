@@ -754,7 +754,7 @@ class AWSBedrockCLI(AbstractApp):
             else:
                 logging.info("Prompt inspection disabled")
 
-            # Build config dictionary with model_context_limits and embedded_tools
+            # Build config dictionary with model_context_limits, embedded_tools, and tool_permissions
             # Settings uses dot notation, so we need to build the nested dict structure
             config_for_manager = {
                 'model_context_limits': self._build_model_context_limits(),
@@ -785,6 +785,9 @@ class AWSBedrockCLI(AbstractApp):
                         'max_file_size_mb': self.settings.get('embedded_tools.archives.max_file_size_mb', 100),
                         'max_files_to_list': self.settings.get('embedded_tools.archives.max_files_to_list', 1000)
                     }
+                },
+                'tool_permissions': {
+                    'auto_approve': self.settings.get('tool_permissions.auto_approve', False)
                 }
             }
 

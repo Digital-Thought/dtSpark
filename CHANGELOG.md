@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0a10] - 2026-02-04
+## [1.1.0a11] - 2026-02-08
 
 ### Added
 - `predefined_conversations.allow_new_conversations` configuration option to control whether users can create new ad-hoc conversations
@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web UI: Added copy-to-clipboard and expand/collapse icons to tool call and result bubbles
 
 ### Fixed
+- Fixed `tool_permissions.auto_approve` setting not being passed to ConversationManager, causing tools to prompt for approval even when auto-approve was enabled during setup
 - Improved embedded tool descriptions to prevent LLM from using Microsoft Office tools (Word, Excel, PowerPoint) for text-based file formats (HTML, CSS, JS, etc.)
   - `write_file` description now explicitly lists supported text-based formats
   - Office tool descriptions now clarify they should only be used for their specific binary formats
