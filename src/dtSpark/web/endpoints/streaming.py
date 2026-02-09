@@ -325,6 +325,7 @@ async def stream_chat(
     request: Request,
     conversation_id: int,
     message: str,
+    web_search_active: bool = False,
     session_id: str = Depends(get_current_session),
 ):
     """
@@ -334,6 +335,7 @@ async def stream_chat(
         request: FastAPI request object
         conversation_id: Conversation ID
         message: User message to send
+        web_search_active: Whether web search should be used for this request
         session_id: Validated session ID from dependency
 
     Returns:
@@ -351,6 +353,9 @@ async def stream_chat(
         # Update service references so conversation manager uses the correct provider
         app_instance.bedrock_service = app_instance.llm_manager.get_active_service()
         conversation_manager.update_service(app_instance.bedrock_service)
+
+    # Set per-request web search toggle
+    conversation_manager.set_web_search_active(web_search_active)
 
     # Create streaming generator
     async def event_generator():

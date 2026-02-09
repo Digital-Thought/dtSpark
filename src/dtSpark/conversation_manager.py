@@ -85,6 +85,8 @@ class ConversationManager:
         self.config = config  # Store config for embedded tools
         self._tools_cache: Optional[List[Dict[str, Any]]] = None
         self._in_tool_use_loop = False  # Flag to defer rollup during tool use sequences
+        self.web_search_enabled = False  # Per-conversation web search setting
+        self._web_search_active = True  # Per-request web search toggle (default ON when enabled)
         # Initialise tool selector for intelligent tool selection
         self.tool_selector = ToolSelector(max_tools_per_request=max_tool_selections)
 
@@ -179,7 +181,8 @@ class ConversationManager:
             return ''
 
     def create_conversation(self, name: str, model_id: str, instructions: Optional[str] = None,
-                            compaction_threshold: Optional[float] = None) -> int:
+                            compaction_threshold: Optional[float] = None,
+                            web_search_enabled: bool = False) -> int:
         """
         Create a new conversation.
 
@@ -188,14 +191,18 @@ class ConversationManager:
             model_id: Bedrock model ID to use
             instructions: Optional instructions/system prompt for the conversation
             compaction_threshold: Optional compaction threshold override (0.0-1.0, None uses global default)
+            web_search_enabled: Enable web search for this conversation (Anthropic models only)
 
         Returns:
             ID of the newly created conversation
         """
         conversation_id = self.database.create_conversation(name, model_id, instructions,
-                                                             compaction_threshold=compaction_threshold)
+                                                             compaction_threshold=compaction_threshold,
+                                                             web_search_enabled=web_search_enabled)
         self.current_conversation_id = conversation_id
         self.current_instructions = instructions
+        self.web_search_enabled = web_search_enabled
+        self._web_search_active = True  # Reset per-request toggle for new conversations
 
         # Update context compactor with conversation-specific threshold if set
         if compaction_threshold is not None:
@@ -206,7 +213,7 @@ class ConversationManager:
             self.context_compactor.compaction_threshold = self.rollup_threshold
             logging.info(f"Using global default compaction threshold: {self.rollup_threshold:.0%}")
 
-        logging.info(f"Created new conversation: {name} (ID: {conversation_id})")
+        logging.info(f"Created new conversation: {name} (ID: {conversation_id}, web_search: {web_search_enabled})")
         return conversation_id
 
     def load_conversation(self, conversation_id: int) -> bool:
@@ -244,11 +251,67 @@ class ConversationManager:
                 self.context_compactor.compaction_threshold = self.rollup_threshold
                 logging.info(f"Using global default compaction threshold: {self.rollup_threshold:.0%}")
 
+            # Load web search setting
+            self.web_search_enabled = conversation.get('web_search_enabled', False)
+            self._web_search_active = True  # Reset per-request toggle when loading
+            if self.web_search_enabled:
+                logging.info("Web search is enabled for this conversation")
+
             logging.info(f"Loaded conversation: {conversation['name']} (ID: {conversation_id})")
             return True
         else:
             logging.error(f"Conversation {conversation_id} not found")
             return False
+
+    def set_web_search_active(self, active: bool):
+        """
+        Set the per-request web search toggle.
+
+        This controls whether web search is active for the next request.
+        Only has effect if web_search_enabled is True for the conversation.
+
+        Args:
+            active: Whether web search should be active for the next request
+        """
+        self._web_search_active = active
+        logging.debug(f"Web search active set to: {active}")
+
+    def get_web_search_config(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the web search configuration for the current request.
+
+        Returns web search config dict if web search should be used,
+        None otherwise.
+
+        Returns:
+            Web search configuration dict or None
+        """
+        if not self.web_search_enabled or not self._web_search_active:
+            return None
+
+        # Build web search config from application config
+        web_search_config = {
+            'enabled': True,
+            'max_uses': 5  # Default
+        }
+
+        # Get settings from config if available
+        if self.config:
+            ws_config = self.config.get('llm_providers', {}).get('anthropic', {}).get('web_search', {})
+            if ws_config.get('max_uses_per_request'):
+                web_search_config['max_uses'] = ws_config['max_uses_per_request']
+            if ws_config.get('allowed_domains'):
+                web_search_config['allowed_domains'] = ws_config['allowed_domains']
+            if ws_config.get('blocked_domains'):
+                web_search_config['blocked_domains'] = ws_config['blocked_domains']
+            if ws_config.get('user_location'):
+                loc = ws_config['user_location']
+                if any([loc.get('city'), loc.get('country')]):
+                    web_search_config['user_location'] = {
+                        k: v for k, v in loc.items() if v
+                    }
+
+        return web_search_config
 
     def add_user_message(self, content: str) -> int:
         """
@@ -1668,7 +1731,8 @@ Current date and time: {datetime_str}"""
                 messages,
                 max_tokens=self.max_tokens,
                 tools=filtered_tools,
-                system=self._get_combined_instructions()
+                system=self._get_combined_instructions(),
+                web_search_config=self.get_web_search_config()
             )
 
             if not response or response.get('error'):

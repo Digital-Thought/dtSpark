@@ -97,7 +97,8 @@ class LLMManager:
         temperature: float = 0.7,
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
+        **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
         Invoke the active model.
@@ -109,6 +110,7 @@ class LLMManager:
             tools: Optional tool definitions
             system: Optional system prompt
             max_retries: Maximum retry attempts
+            **kwargs: Additional provider-specific parameters (e.g., web_search_config for Anthropic)
 
         Returns:
             Response dictionary in standard format
@@ -127,7 +129,8 @@ class LLMManager:
             temperature=temperature,
             tools=tools,
             system=system,
-            max_retries=max_retries
+            max_retries=max_retries,
+            **kwargs
         )
 
     def get_active_provider(self) -> Optional[str]:

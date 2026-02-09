@@ -160,6 +160,7 @@ async def create_conversation(
     name: str = Form(...),
     model_id: str = Form(...),
     instructions: Optional[str] = Form(None),
+    web_search_enabled: Optional[str] = Form(None),
     files: Optional[List[UploadFile]] = File(None),
     session_id: str = Depends(get_current_session),
 ) -> ConversationDetail:
@@ -170,6 +171,7 @@ async def create_conversation(
         name: Conversation name
         model_id: Model ID to use
         instructions: Optional system instructions
+        web_search_enabled: Enable web search for this conversation (Anthropic only)
         files: Optional file attachments
         session_id: Validated session ID
 
@@ -196,12 +198,26 @@ async def create_conversation(
             logger.info(f"Mandatory model enforced: {model_id}"
                         f"{f' via {mandatory_provider}' if mandatory_provider else ''}")
 
+        # Parse web_search_enabled (comes as string from form)
+        enable_web_search = web_search_enabled == 'true' if web_search_enabled else False
+
+        # Validate web search is only enabled for Anthropic Direct models
+        if enable_web_search:
+            # Check if web search is globally enabled
+            web_search_config = app_instance.settings.get('llm_providers.anthropic.web_search.enabled', False)
+            if not web_search_config:
+                enable_web_search = False
+                logger.warning("Web search requested but not globally enabled - disabling")
+
         # Create conversation in database
         conversation_id = database.create_conversation(
             name=name,
             model_id=model_id,
             instructions=instructions,
+            web_search_enabled=enable_web_search,
         )
+        if enable_web_search:
+            logger.info(f"Created conversation {conversation_id} with web search enabled")
 
         # Load the conversation to set it as current
         conversation_manager.load_conversation(conversation_id)
@@ -388,11 +404,17 @@ async def list_models(
             if filtered:
                 models = filtered
 
+        # Check if web search is globally enabled for Anthropic
+        web_search_enabled = app_instance.settings.get(
+            'llm_providers.anthropic.web_search.enabled', False
+        )
+
         return {
             "models": models,
             "mandatory_model": mandatory_model,
             "mandatory_provider": mandatory_provider,
             "model_locked": mandatory_model is not None,
+            "web_search_enabled": web_search_enabled,
         }
 
     except Exception as e:

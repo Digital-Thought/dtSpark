@@ -192,7 +192,7 @@ class BedrockService(LLMService):
 
     def invoke_model(self, messages: List[Dict[str, str]], max_tokens: int = 4096,
                     temperature: float = 0.7, tools: Optional[List[Dict[str, Any]]] = None,
-                    system: Optional[str] = None, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+                    system: Optional[str] = None, max_retries: int = 3, **kwargs) -> Optional[Dict[str, Any]]:
         """
         Invoke the current model or inference profile with a list of messages.
         Includes automatic retry logic for transient failures.
@@ -204,6 +204,7 @@ class BedrockService(LLMService):
             tools: Optional list of tool definitions for the model to use
             system: Optional system prompt/instructions for the model
             max_retries: Maximum number of retry attempts for transient failures
+            **kwargs: Additional parameters (ignored by AWS Bedrock)
 
         Returns:
             Response dictionary with content and metadata, or error dictionary on failure

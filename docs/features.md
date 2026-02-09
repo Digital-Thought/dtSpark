@@ -5,16 +5,17 @@ Comprehensive documentation of all Spark features.
 ## Table of Contents
 
 1. [Multi-Provider LLM Support](#multi-provider-llm-support)
-2. [Conversation Management](#conversation-management)
-3. [Intelligent Context Compaction](#intelligent-context-compaction)
-4. [Tool Integration](#tool-integration)
-5. [Built-in Filesystem Tools](#built-in-filesystem-tools)
-6. [Tool Approval Process](#tool-approval-process)
-7. [MCP Audit Logging](#mcp-audit-logging)
-8. [Database Support & Multi-User](#database-support--multi-user)
-9. [Conversation Export](#conversation-export)
-10. [Prompt Security Inspection](#prompt-security-inspection)
-11. [Autonomous Actions](#autonomous-actions)
+2. [Web Search (Anthropic)](#web-search-anthropic)
+3. [Conversation Management](#conversation-management)
+4. [Intelligent Context Compaction](#intelligent-context-compaction)
+5. [Tool Integration](#tool-integration)
+6. [Built-in Filesystem Tools](#built-in-filesystem-tools)
+7. [Tool Approval Process](#tool-approval-process)
+8. [MCP Audit Logging](#mcp-audit-logging)
+9. [Database Support & Multi-User](#database-support--multi-user)
+10. [Conversation Export](#conversation-export)
+11. [Prompt Security Inspection](#prompt-security-inspection)
+12. [Autonomous Actions](#autonomous-actions)
 
 ---
 
@@ -74,6 +75,154 @@ graph TB
 - Change models mid-conversation with `changemodel` command
 - Per-model token tracking shows usage breakdown
 - Model can be locked via configuration for consistency
+
+---
+
+## Web Search (Anthropic)
+
+Anthropic models can search the web for current information during conversations, providing access to real-time data beyond the model's training cutoff.
+
+### Overview
+
+```mermaid
+graph TB
+    subgraph "Hierarchical Control"
+        GLOBAL[Global Config<br/>web_search.enabled]
+        CONV[Conversation Setting<br/>Enable when creating]
+        REQUEST[Per-Request Toggle<br/>Button in chat UI]
+    end
+
+    subgraph "Web Search Flow"
+        USER[User Message] --> CHECK{Web Search<br/>Active?}
+        CHECK -->|Yes| TOOL[Web Search Tool<br/>Sent to API]
+        CHECK -->|No| NORMAL[Normal Request]
+        TOOL --> LLM[LLM Decides<br/>When to Search]
+        LLM --> RESULTS[Search Results<br/>Included in Response]
+    end
+
+    GLOBAL --> CONV
+    CONV --> REQUEST
+    REQUEST --> CHECK
+```
+
+### Hierarchical Control
+
+Web search is controlled at three levels:
+
+| Level | Control | Description |
+|-------|---------|-------------|
+| **Global** | `config.yaml` | Master switch - if disabled, web search is unavailable entirely |
+| **Conversation** | When creating | Checkbox appears for Anthropic models if globally enabled |
+| **Request** | Chat UI toggle | Per-message toggle, defaults to ON when conversation has web search enabled |
+
+### Enabling Web Search
+
+#### 1. Global Configuration
+
+Enable in `config.yaml` under `llm_providers.anthropic`:
+
+```yaml
+anthropic:
+  enabled: true
+  api_key: SEC/anthropic_api_key
+  web_search:
+    enabled: true  # Master switch
+    max_uses_per_request: 5
+```
+
+Or enable during setup wizard:
+
+```
+Do you wish to use Anthropic Direct API? [y/N]: y
+Anthropic API key: ********
+Enable web search capability for Anthropic models? ($0.01 per search) [y/N]: y
+```
+
+#### 2. Conversation Creation
+
+When creating a new conversation with an Anthropic model, a checkbox appears:
+
+```
+☑ Enable web search ($0.01 per search)
+  When enabled, the AI can search the web for current information.
+```
+
+#### 3. Per-Request Toggle
+
+In the chat interface, a globe button appears next to the send button for web-search-enabled conversations:
+
+| State | Button Style | Behaviour |
+|-------|--------------|-----------|
+| ON (default) | Solid blue | Web search tool included in request |
+| OFF | Outline grey | Web search tool excluded |
+
+### Configuration Options
+
+```yaml
+web_search:
+  enabled: false                 # Master switch
+  max_uses_per_request: 5        # Limit searches per API call
+  allowed_domains: []            # Restrict to specific domains
+  blocked_domains: []            # Block specific domains
+  user_location:                 # Localise search results
+    city: null
+    region: null
+    country: null
+    timezone: null
+```
+
+### Domain Filtering
+
+Optionally restrict or block specific domains:
+
+```yaml
+# Only search documentation sites
+allowed_domains:
+  - "docs.python.org"
+  - "developer.mozilla.org"
+  - "docs.aws.amazon.com"
+
+# Or block certain sites
+blocked_domains:
+  - "example-blocked.com"
+```
+
+**Note**: Only one of `allowed_domains` or `blocked_domains` can be active at a time.
+
+### User Location
+
+Provide location context for localised search results:
+
+```yaml
+user_location:
+  city: "Sydney"
+  region: "New South Wales"
+  country: "AU"
+  timezone: "Australia/Sydney"
+```
+
+### Pricing
+
+| Component | Cost |
+|-----------|------|
+| Web search | $0.01 per search |
+| Search results | Standard token costs |
+
+The LLM decides when and how often to search based on the user's query. The `max_uses_per_request` setting limits how many searches can occur in a single API call.
+
+### How It Works
+
+1. When enabled, the web search tool is included in API requests to Anthropic
+2. The LLM autonomously decides when to search based on the user's query
+3. Search results are returned as part of the response
+4. Results include source URLs for verification
+
+### Use Cases
+
+- **Current Events**: News, recent developments, live data
+- **Technical Documentation**: Latest API references, framework docs
+- **Research**: Academic papers, industry reports
+- **Fact-Checking**: Verify claims with current sources
 
 ---
 

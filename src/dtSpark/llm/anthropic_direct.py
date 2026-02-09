@@ -165,7 +165,8 @@ class AnthropicService(LLMService):
         temperature: float = 0.7,
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
+        web_search_config: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Invoke Anthropic model with conversation.
@@ -177,6 +178,7 @@ class AnthropicService(LLMService):
             tools: Optional tool definitions
             system: Optional system prompt
             max_retries: Maximum retry attempts
+            web_search_config: Optional web search configuration dict
 
         Returns:
             Response dictionary in standard format
@@ -190,7 +192,7 @@ class AnthropicService(LLMService):
             }
 
         try:
-            api_params = self._build_api_params(messages, max_tokens, temperature, tools, system)
+            api_params = self._build_api_params(messages, max_tokens, temperature, tools, system, web_search_config)
             return self._execute_streaming_request(api_params)
 
         except Exception as e:
@@ -208,7 +210,8 @@ class AnthropicService(LLMService):
         max_tokens: int,
         temperature: float,
         tools: Optional[List[Dict[str, Any]]],
-        system: Optional[str]
+        system: Optional[str],
+        web_search_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Build API parameters for an Anthropic request.
@@ -221,6 +224,7 @@ class AnthropicService(LLMService):
             temperature: Sampling temperature
             tools: Optional tool definitions
             system: Optional system prompt
+            web_search_config: Optional web search configuration
 
         Returns:
             Dictionary of API parameters ready for the Anthropic client
@@ -253,9 +257,42 @@ class AnthropicService(LLMService):
         if system:
             api_params['system'] = system
 
+        # Build tools list (including web search if enabled)
+        api_tools = []
+
+        # Add web search tool if enabled
+        if web_search_config and web_search_config.get('enabled'):
+            web_search_tool = {
+                'type': 'web_search_20250305',
+                'name': 'web_search',
+                'max_uses': web_search_config.get('max_uses', 5)
+            }
+
+            # Add optional domain filters (only one can be used)
+            if web_search_config.get('allowed_domains'):
+                web_search_tool['allowed_domains'] = web_search_config['allowed_domains']
+            elif web_search_config.get('blocked_domains'):
+                web_search_tool['blocked_domains'] = web_search_config['blocked_domains']
+
+            # Add optional user location for localised results
+            if web_search_config.get('user_location'):
+                loc = web_search_config['user_location']
+                if any([loc.get('city'), loc.get('country')]):
+                    web_search_tool['user_location'] = {
+                        'type': 'approximate',
+                        **{k: v for k, v in loc.items() if v}
+                    }
+
+            api_tools.append(web_search_tool)
+            logging.info("Web search tool enabled for this request")
+
+        # Add regular tools
         if tools:
-            api_params['tools'] = self._convert_tools_to_anthropic(tools)
-            logging.debug(f"Sending {len(api_params['tools'])} tools to Anthropic API")
+            api_tools.extend(self._convert_tools_to_anthropic(tools))
+
+        if api_tools:
+            api_params['tools'] = api_tools
+            logging.debug(f"Sending {len(api_tools)} tools to Anthropic API")
 
         logging.debug(f"Invoking Anthropic model: {self.current_model_id}")
         self._log_api_params(api_params)
@@ -359,6 +396,12 @@ class AnthropicService(LLMService):
         if hasattr(final_message, 'usage'):
             usage_info['input_tokens'] = final_message.usage.input_tokens
             usage_info['output_tokens'] = final_message.usage.output_tokens
+            # Track web search usage if present
+            if hasattr(final_message.usage, 'server_tool_use'):
+                server_tool_use = final_message.usage.server_tool_use
+                if hasattr(server_tool_use, 'web_search_requests'):
+                    usage_info['web_search_requests'] = server_tool_use.web_search_requests
+                    logging.info(f"Web search requests: {server_tool_use.web_search_requests}")
 
         if not hasattr(final_message, 'content'):
             return
@@ -377,6 +420,27 @@ class AnthropicService(LLMService):
                 }
                 tool_use_blocks.append(tool_block)
                 content_blocks.append(tool_block)
+            elif block.type == 'server_tool_use':
+                # Web search tool invocation by the model
+                server_tool_block = {
+                    'type': 'server_tool_use',
+                    'id': block.id,
+                    'name': block.name
+                }
+                if hasattr(block, 'input'):
+                    server_tool_block['input'] = block.input
+                content_blocks.append(server_tool_block)
+                logging.debug(f"Web search invoked: {block.name}")
+            elif block.type == 'web_search_tool_result':
+                # Web search results from the server
+                result_block = {
+                    'type': 'web_search_tool_result',
+                    'tool_use_id': block.tool_use_id
+                }
+                if hasattr(block, 'content'):
+                    result_block['content'] = block.content
+                content_blocks.append(result_block)
+                logging.debug("Web search results received")
 
     def _handle_rate_limit_error(self, error: Exception, retry_attempt: int) -> Optional[Dict[str, Any]]:
         """

@@ -7,7 +7,7 @@ Welcome to the Spark documentation. Spark (Secure Personal AI Research Kit) is a
 Spark provides a unified interface to interact with large language models from multiple providers:
 
 - **AWS Bedrock** - Access Claude, Llama, Mistral, Cohere, Titan, and other models through AWS
-- **Anthropic Direct API** - Direct access to Claude models without AWS infrastructure
+- **Anthropic Direct API** - Direct access to Claude models without AWS infrastructure, with optional web search
 - **Ollama** - Run open-source models locally for privacy and offline use
 
 ## Key Capabilities
@@ -18,6 +18,7 @@ mindmap
     LLM Providers
       AWS Bedrock
       Anthropic API
+        Web Search
       Ollama Local
     Interfaces
       CLI Terminal

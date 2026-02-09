@@ -87,6 +87,11 @@ sequenceDiagram
         User->>Spark: Select model
     end
 
+    alt Anthropic Model + Web Search Enabled
+        Spark->>User: Offer web search option
+        User->>Spark: Enable or skip
+    end
+
     Spark->>User: Prompt for instructions (optional)
     User->>Spark: Enter instructions or skip
 
@@ -103,10 +108,19 @@ Enter a descriptive name for your conversation.
 ### Step 2: Model Selection
 Choose from available models (unless model is locked in config).
 
-### Step 3: Instructions (Optional)
+### Step 3: Web Search (Anthropic Models Only)
+If using an Anthropic model and web search is globally enabled, you'll be asked:
+
+```
+Enable web search for this conversation? ($0.01 per search) [y/N]:
+```
+
+When enabled, the AI can search the web for current information during the conversation.
+
+### Step 4: Instructions (Optional)
 Provide custom instructions for the AI assistant.
 
-### Step 4: File Attachments (Optional)
+### Step 5: File Attachments (Optional)
 Attach files to include in the conversation context.
 
 ---

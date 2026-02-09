@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a12] - 2026-02-09
+
+### Added
+- **Anthropic Web Search Integration** - AI can now search the web for current information
+  - Hierarchical control: global configuration, per-conversation setting, per-request toggle
+  - Web search enabled via setup wizard or `llm_providers.anthropic.web_search.enabled` config
+  - When creating a conversation with Anthropic model, checkbox to enable web search appears
+  - Per-request toggle button in chat UI to enable/disable web search for individual messages
+  - Optional domain filtering (`allowed_domains`, `blocked_domains`) and user location settings
+  - Pricing: $0.01 per search + standard token costs
+- Database migration adds `web_search_enabled` column to conversations table
+
+### Changed
+- LLM provider `invoke_model` methods now accept `**kwargs` for provider-specific parameters
+
+---
+
 ## [1.1.0a11] - 2026-02-08
 
 ### Added
@@ -361,6 +378,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Description |
 |---------|-------------|
+| 1.1.0a12 | Anthropic Web Search integration with hierarchical control (global, conversation, request) |
+| 1.1.0a11 | Allow new conversations toggle, tool call/result UI improvements, auto-approve fix, Office tool descriptions |
 | 1.1.0a5 | SonarCloud remediation, browser heartbeat auto-shutdown, autonomous actions config, accessibility fixes |
 | 1.1.0a3 | Enforce mandatory model in Web UI, fix predefined conversation errors |
 | 1.1.0a2 | Fix create_word_document style handling, remove sensitive data from logs |

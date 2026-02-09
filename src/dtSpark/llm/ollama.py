@@ -235,7 +235,8 @@ class OllamaService(LLMService):
         temperature: float = 0.7,
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
+        **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
         Invoke Ollama model with conversation.
@@ -247,6 +248,7 @@ class OllamaService(LLMService):
             tools: Optional tool definitions
             system: Optional system prompt
             max_retries: Maximum retry attempts
+            **kwargs: Additional parameters (ignored by Ollama)
 
         Returns:
             Response dictionary in standard format

@@ -179,9 +179,20 @@ Browse and select existing conversations:
 │  └─────────────────────────────────┘    │
 │                                         │
 ├─────────────────────────────────────────┤
-│  [Type your message...]        [Send]   │
+│  [Type your message...]     [🌐] [Send] │
 └─────────────────────────────────────────┘
 ```
+
+### Web Search Toggle
+
+For conversations with web search enabled (Anthropic models only), a globe button (🌐) appears next to the send button:
+
+| State | Appearance | Behaviour |
+|-------|------------|-----------|
+| **ON** (default) | Solid blue button | Web search included in request |
+| **OFF** | Outline grey button | Web search excluded |
+
+Click the button to toggle web search for individual messages. This allows you to control when the AI searches the web, which incurs a cost of $0.01 per search.
 
 ### Message Types
 
@@ -281,6 +292,48 @@ Options:
 - **Allow Always** - Permit now and in future
 - **Deny** - Block now and in future
 - **Cancel** - Skip this time
+
+---
+
+## Creating Conversations
+
+### New Conversation Form
+
+When creating a new conversation, you configure:
+
+1. **Conversation Name** - Descriptive name for the chat
+2. **Model Selection** - Choose from available LLM models
+3. **Web Search** (Anthropic models only) - Enable web search capability
+4. **Instructions** - Optional system prompt
+5. **File Attachments** - Optional files to include
+
+### Web Search Option
+
+When selecting an Anthropic model and web search is globally enabled, a checkbox appears:
+
+```
+┌─────────────────────────────────────────┐
+│  New Conversation                       │
+├─────────────────────────────────────────┤
+│                                         │
+│  Name: [Research Project          ]     │
+│                                         │
+│  Model: [Claude Sonnet 4      ▼]        │
+│                                         │
+│  ☑ Enable web search                    │
+│    ($0.01 per search)                   │
+│                                         │
+│  Instructions (optional):               │
+│  [                              ]       │
+│                                         │
+│  [Cancel]              [Create]         │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Note**: The web search checkbox only appears when:
+- Web search is globally enabled in configuration
+- An Anthropic Direct model is selected
 
 ---
 

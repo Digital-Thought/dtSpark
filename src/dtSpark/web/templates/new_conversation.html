@@ -35,6 +35,19 @@
                         </select>
                     </div>
 
+                    <div class="mb-3" id="web-search-option" style="display: none;">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="web-search-enabled" name="web_search_enabled" value="true">
+                            <label class="form-check-label" for="web-search-enabled">
+                                <i class="bi bi-globe"></i> Enable web search
+                                <small class="text-muted">($0.01 per search)</small>
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            When enabled, the AI can search the web for current information.
+                        </div>
+                    </div>
+
                     <div class="mb-3">
                         <label for="instructions" class="form-label">Instructions (Optional)</label>
                         <textarea
@@ -88,6 +101,10 @@
 
 {% block extra_scripts %}
 <script>
+// Global state for web search availability
+let webSearchGloballyEnabled = false;
+let modelsData = [];
+
 // Load available models
 async function loadModels() {
     try {
@@ -96,6 +113,8 @@ async function loadModels() {
 
         const models = data.models || data;
         const modelLocked = data.model_locked || false;
+        webSearchGloballyEnabled = data.web_search_enabled || false;
+        modelsData = models;
 
         const select = document.getElementById('model-select');
 
@@ -105,6 +124,7 @@ async function loadModels() {
             models.forEach(model => {
                 const option = document.createElement('option');
                 option.value = model.id;
+                option.dataset.provider = model.provider || '';
 
                 let displayText = model.name;
                 if (model.provider) {
@@ -121,11 +141,17 @@ async function loadModels() {
             infoDiv.className = 'form-text text-info';
             infoDiv.innerHTML = '<i class="bi bi-lock-fill"></i> Model is locked via configuration';
             select.parentNode.appendChild(infoDiv);
+
+            // Check if locked model is Anthropic and show web search option
+            if (models.length > 0) {
+                updateWebSearchVisibility(models[0].provider);
+            }
         } else {
             select.innerHTML = '<option value="">Select a model...</option>';
             models.forEach(model => {
                 const option = document.createElement('option');
                 option.value = model.id;
+                option.dataset.provider = model.provider || '';
 
                 // Show service provider and optionally model maker
                 let displayText = model.name;
@@ -139,9 +165,30 @@ async function loadModels() {
                 select.appendChild(option);
             });
         }
+
+        // Add change listener for web search visibility
+        select.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const provider = selectedOption?.dataset?.provider || '';
+            updateWebSearchVisibility(provider);
+        });
     } catch (error) {
         console.error('Error loading models:', error);
         showToast('Failed to load models', 'error');
+    }
+}
+
+// Update web search option visibility based on selected provider
+function updateWebSearchVisibility(provider) {
+    const webSearchOption = document.getElementById('web-search-option');
+    const webSearchCheckbox = document.getElementById('web-search-enabled');
+
+    // Show web search option only for Anthropic Direct provider and if globally enabled
+    if (webSearchGloballyEnabled && provider === 'Anthropic Direct') {
+        webSearchOption.style.display = 'block';
+    } else {
+        webSearchOption.style.display = 'none';
+        webSearchCheckbox.checked = false;
     }
 }
 

@@ -1527,6 +1527,17 @@ class AWSBedrockCLI(AbstractApp):
             else:
                 anthropic_api_key = ""
 
+            # Web search option
+            cli.console.print()
+            cli.console.print("[dim]Web search allows the AI to search the web for current information.[/dim]")
+            cli.console.print("[dim]Pricing: $0.01 per search + standard token costs.[/dim]")
+            enable_web_search = Confirm.ask(
+                "Enable web search capability for Anthropic models?",
+                default=False
+            )
+        else:
+            enable_web_search = False
+
         # ═══════════════════════════════════════════════════════════════
         # Database Configuration
         # ═══════════════════════════════════════════════════════════════
@@ -2131,6 +2142,14 @@ class AWSBedrockCLI(AbstractApp):
                 config_content = re.sub(
                     r'(anthropic:\s*\n\s+enabled:\s+(?:true|false)\s*#[^\n]*\n\s+api_key:\s+)[^\s#]+',
                     f'\\g<1>{anthropic_api_key}',
+                    config_content
+                )
+
+            # Anthropic web search setting
+            if use_anthropic:
+                config_content = re.sub(
+                    r'(web_search:\s*\n\s+enabled:\s+)(true|false)',
+                    f'\\g<1>{str(enable_web_search).lower()}',
                     config_content
                 )
 

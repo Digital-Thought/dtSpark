@@ -8,8 +8,9 @@
  * Send a message and handle streaming response via SSE
  * @param {number} conversationId - The conversation ID
  * @param {string} message - The message to send
+ * @param {boolean} webSearchActive - Whether web search should be used for this request
  */
-async function sendMessageWithSSE(conversationId, message) {
+async function sendMessageWithSSE(conversationId, message, webSearchActive = false) {
     // Show typing indicator
     let typingIndicator = showTypingIndicator();
 
@@ -21,9 +22,11 @@ async function sendMessageWithSSE(conversationId, message) {
         try {
             // Create EventSource for SSE
             const encodedMessage = encodeURIComponent(message);
-            const eventSource = new EventSource(
-                `/api/stream/chat?message=${encodedMessage}&conversation_id=${conversationId}`
-            );
+            let url = `/api/stream/chat?message=${encodedMessage}&conversation_id=${conversationId}`;
+            if (webSearchActive) {
+                url += '&web_search_active=true';
+            }
+            const eventSource = new EventSource(url);
 
             // Handle different event types
             eventSource.addEventListener('status', (event) => {

@@ -129,6 +129,21 @@ llm_providers:
     rate_limit_base_delay: 2.0  # Base delay in seconds for exponential backoff (default: 2.0)
     # Rate limit handling uses exponential backoff: 2^0=1s, 2^1=2s, 2^2=4s, 2^3=8s, 2^4=16s
 
+    # Web Search Configuration (Anthropic models only)
+    # Allows Claude to search the web for real-time information
+    # Pricing: $0.01 per search + token costs for search results
+    web_search:
+      enabled: false  # Master switch - if false, web search is unavailable entirely
+      max_uses_per_request: 5  # Maximum number of searches per API request
+      allowed_domains: []  # Optional: restrict searches to specific domains (e.g., ["example.com", "docs.python.org"])
+      blocked_domains: []  # Optional: block specific domains from search results
+      # Optional: localise search results based on user location
+      user_location:
+        city: null  # e.g., "Sydney"
+        region: null  # e.g., "New South Wales"
+        country: null  # e.g., "AU"
+        timezone: null  # e.g., "Australia/Sydney"
+
 bedrock:
   max_tokens: 8192  # Maximum tokens per response
   temperature: 0.7

@@ -65,7 +65,8 @@ class LLMService(ABC):
         temperature: float = 0.7,
         tools: Optional[List[Dict[str, Any]]] = None,
         system: Optional[str] = None,
-        max_retries: int = 3
+        max_retries: int = 3,
+        **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
         Invoke the model with a conversation.
@@ -77,6 +78,7 @@ class LLMService(ABC):
             tools: Optional tool definitions
             system: Optional system prompt
             max_retries: Maximum retry attempts for transient failures
+            **kwargs: Additional provider-specific parameters (e.g., web_search_config for Anthropic)
 
         Returns:
             Response dictionary with standard format:

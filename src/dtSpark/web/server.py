@@ -572,6 +572,7 @@ def create_app(
                 "session_active": True,
                 "conversation_id": conversation_id,
                 "conversation_name": conv['name'],
+                "web_search_enabled": conv.get('web_search_enabled', False),
             }
         )
 

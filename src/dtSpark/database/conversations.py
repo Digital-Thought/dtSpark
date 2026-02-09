@@ -16,7 +16,8 @@ from typing import List, Dict, Optional
 
 def create_conversation(conn: sqlite3.Connection, name: str, model_id: str,
                        instructions: Optional[str] = None, user_guid: str = None,
-                       compaction_threshold: Optional[float] = None) -> int:
+                       compaction_threshold: Optional[float] = None,
+                       web_search_enabled: bool = False) -> int:
     """
     Create a new conversation.
 
@@ -27,6 +28,7 @@ def create_conversation(conn: sqlite3.Connection, name: str, model_id: str,
         instructions: Optional instructions/system prompt for the conversation
         user_guid: User GUID for multi-user support
         compaction_threshold: Optional compaction threshold override (0.0-1.0, NULL uses config default)
+        web_search_enabled: Enable web search for this conversation (Anthropic models only)
 
     Returns:
         ID of the newly created conversation
@@ -35,13 +37,13 @@ def create_conversation(conn: sqlite3.Connection, name: str, model_id: str,
     now = datetime.now()
 
     cursor.execute('''
-        INSERT INTO conversations (name, model_id, created_at, last_updated, instructions, user_guid, compaction_threshold)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (name, model_id, now, now, instructions, user_guid, compaction_threshold))
+        INSERT INTO conversations (name, model_id, created_at, last_updated, instructions, user_guid, compaction_threshold, web_search_enabled)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (name, model_id, now, now, instructions, user_guid, compaction_threshold, 1 if web_search_enabled else 0))
 
     conn.commit()
     conversation_id = cursor.lastrowid
-    logging.info(f"Created conversation '{name}' with ID {conversation_id} for user {user_guid} (compaction_threshold: {compaction_threshold})")
+    logging.info(f"Created conversation '{name}' with ID {conversation_id} for user {user_guid} (compaction_threshold: {compaction_threshold}, web_search: {web_search_enabled})")
     return conversation_id
 
 
@@ -111,7 +113,7 @@ def get_conversation(conn: sqlite3.Connection, conversation_id: int, user_guid: 
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, name, model_id, created_at, last_updated, total_tokens, instructions,
-               tokens_sent, tokens_received, max_tokens, compaction_threshold
+               tokens_sent, tokens_received, max_tokens, compaction_threshold, web_search_enabled
         FROM conversations
         WHERE id = ? AND user_guid = ?
     ''', (conversation_id, user_guid))
@@ -129,7 +131,8 @@ def get_conversation(conn: sqlite3.Connection, conversation_id: int, user_guid: 
             'tokens_sent': row['tokens_sent'] or 0,
             'tokens_received': row['tokens_received'] or 0,
             'max_tokens': row['max_tokens'],  # NULL means use global default
-            'compaction_threshold': row['compaction_threshold']  # NULL means use global default
+            'compaction_threshold': row['compaction_threshold'],  # NULL means use global default
+            'web_search_enabled': bool(row['web_search_enabled'])  # Convert 0/1 to bool
         }
     return None
 
@@ -286,6 +289,31 @@ def update_conversation_compaction_threshold(conn: sqlite3.Connection, conversat
         logging.info(f"Updated compaction_threshold for conversation {conversation_id} to {compaction_threshold}")
     except Exception as e:
         logging.error(f"Failed to update compaction_threshold: {e}")
+        conn.rollback()
+
+
+def update_conversation_web_search(conn: sqlite3.Connection, conversation_id: int,
+                                   web_search_enabled: bool, user_guid: str = None):
+    """
+    Update the web_search_enabled setting for a specific conversation.
+
+    Args:
+        conn: Database connection
+        conversation_id: ID of the conversation
+        web_search_enabled: Whether web search is enabled for this conversation
+        user_guid: User GUID for multi-user support
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE conversations
+            SET web_search_enabled = ?
+            WHERE id = ? AND user_guid = ?
+        ''', (1 if web_search_enabled else 0, conversation_id, user_guid))
+        conn.commit()
+        logging.info(f"Updated web_search_enabled for conversation {conversation_id} to {web_search_enabled}")
+    except Exception as e:
+        logging.error(f"Failed to update web_search_enabled: {e}")
         conn.rollback()
 
 

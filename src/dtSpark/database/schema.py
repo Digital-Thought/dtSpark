@@ -110,6 +110,15 @@ def initialise_schema(conn, backend=None):
         conn.commit()
         logging.info("Added compaction_threshold column to conversations table")
 
+    # Migration: Add web_search_enabled column if it doesn't exist
+    try:
+        cursor.execute("SELECT web_search_enabled FROM conversations LIMIT 1")
+    except sqlite3.OperationalError:
+        # Column doesn't exist, add it (0 = disabled, 1 = enabled for this conversation)
+        cursor.execute("ALTER TABLE conversations ADD COLUMN web_search_enabled INTEGER DEFAULT 0")
+        conn.commit()
+        logging.info("Added web_search_enabled column to conversations table")
+
     # Messages table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (

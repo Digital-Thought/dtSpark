@@ -195,7 +195,38 @@ llm_providers:
     api_key: null                # Or use ANTHROPIC_API_KEY env var
     rate_limit_max_retries: 5    # Retry attempts for rate limits
     rate_limit_base_delay: 2.0   # Base delay for exponential backoff
+
+    # Web Search (Anthropic models only)
+    web_search:
+      enabled: false             # Master switch for web search capability
+      max_uses_per_request: 5    # Maximum searches per API request
+      allowed_domains: []        # Restrict to specific domains
+      blocked_domains: []        # Block specific domains
+      user_location:             # Optional: localise search results
+        city: null               # e.g., "Sydney"
+        region: null             # e.g., "New South Wales"
+        country: null            # e.g., "AU"
+        timezone: null           # e.g., "Australia/Sydney"
 ```
+
+### Web Search Configuration
+
+Web search allows Anthropic models to search the web for current information during conversations.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `enabled` | boolean | `false` | Master switch - enables web search globally |
+| `max_uses_per_request` | integer | `5` | Maximum searches per API call |
+| `allowed_domains` | list | `[]` | Restrict searches to these domains only |
+| `blocked_domains` | list | `[]` | Exclude these domains from results |
+| `user_location` | object | `null` | Localise search results to a region |
+
+**Pricing**: $0.01 per search + standard token costs for search results.
+
+**Hierarchical Control**:
+1. **Global** - Enable/disable via `web_search.enabled` in config
+2. **Conversation** - Enable per-conversation when creating (checkbox in UI)
+3. **Request** - Toggle per-message in chat interface
 
 ### Provider Priority
 
