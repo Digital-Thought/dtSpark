@@ -87,11 +87,13 @@ class ConversationDatabase:
     # Conversation operations
     def create_conversation(self, name: str, model_id: str,
                            instructions: Optional[str] = None,
-                           compaction_threshold: Optional[float] = None) -> int:
+                           compaction_threshold: Optional[float] = None,
+                           web_search_enabled: bool = False) -> int:
         """Create a new conversation."""
         return conv_module.create_conversation(self.conn, name, model_id, instructions,
                                               user_guid=self.user_guid,
-                                              compaction_threshold=compaction_threshold)
+                                              compaction_threshold=compaction_threshold,
+                                              web_search_enabled=web_search_enabled)
 
     def get_active_conversations(self) -> List[Dict]:
         """Retrieve all active conversations."""
