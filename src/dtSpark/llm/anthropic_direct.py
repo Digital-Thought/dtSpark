@@ -427,8 +427,12 @@ class AnthropicService(LLMService):
                     'id': block.id,
                     'name': block.name
                 }
-                if hasattr(block, 'input'):
-                    server_tool_block['input'] = block.input
+                if hasattr(block, 'input') and block.input:
+                    # Convert to dict if it's an SDK object
+                    if hasattr(block.input, '__dict__'):
+                        server_tool_block['input'] = dict(block.input)
+                    else:
+                        server_tool_block['input'] = block.input
                 content_blocks.append(server_tool_block)
                 logging.debug(f"Web search invoked: {block.name}")
             elif block.type == 'web_search_tool_result':
@@ -437,10 +441,23 @@ class AnthropicService(LLMService):
                     'type': 'web_search_tool_result',
                     'tool_use_id': block.tool_use_id
                 }
-                if hasattr(block, 'content'):
-                    result_block['content'] = block.content
+                if hasattr(block, 'content') and block.content:
+                    # Convert WebSearchResultBlock objects to dictionaries
+                    search_results = []
+                    for result in block.content:
+                        result_dict = {'type': getattr(result, 'type', 'web_search_result')}
+                        if hasattr(result, 'url'):
+                            result_dict['url'] = result.url
+                        if hasattr(result, 'title'):
+                            result_dict['title'] = result.title
+                        if hasattr(result, 'page_age'):
+                            result_dict['page_age'] = result.page_age
+                        if hasattr(result, 'encrypted_content'):
+                            result_dict['encrypted_content'] = result.encrypted_content
+                        search_results.append(result_dict)
+                    result_block['content'] = search_results
                 content_blocks.append(result_block)
-                logging.debug("Web search results received")
+                logging.debug(f"Web search results received: {len(result_block.get('content', []))} results")
 
     def _handle_rate_limit_error(self, error: Exception, retry_attempt: int) -> Optional[Dict[str, Any]]:
         """

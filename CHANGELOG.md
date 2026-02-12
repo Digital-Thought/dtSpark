@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a20] - 2026-02-13
+
+### Fixed
+- **Web Search JSON Serialisation Error** - Fix "Object of type WebSearchResultBlock is not JSON serializable" error
+  - Convert Anthropic SDK `WebSearchResultBlock` objects to plain dictionaries before JSON serialisation
+  - Properly extract `url`, `title`, `page_age`, and `encrypted_content` fields from search results
+  - Also handle `server_tool_use` input objects that may be SDK types
+
+---
+
 ## [1.1.0a19] - 2026-02-12
 
 ### Added
