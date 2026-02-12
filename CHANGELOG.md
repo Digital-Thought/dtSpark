@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a18] - 2026-02-12
+
+### Added
+- **Word Document List Formatting** - Automatic detection and formatting of lists in replacement text
+  - Lines starting with `1.`, `2)`, etc. are converted to Word numbered lists (`List Number` style)
+  - Lines starting with `-`, `*`, `•` are converted to Word bullet lists (`List Bullet` style)
+  - Multi-line content creates proper separate paragraphs with appropriate styles
+  - Works in both document body paragraphs and table cells
+
+---
+
 ## [1.1.0a17] - 2026-02-12
 
 ### Fixed

@@ -1642,85 +1642,196 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                 return {"success": False, "error": f"Template does not exist: {template_path}"}
 
             doc = Document(str(template_full))
+            import re
 
-            def replace_paragraph_text_multiline(para, new_text):
-                """Replace paragraph text, handling multi-line content with line breaks."""
-                # Clear existing runs
+            def parse_line_type(line):
+                """
+                Detect if a line is a numbered list, bullet list, or plain text.
+                Returns: (type, content) where type is 'numbered', 'bullet', or 'text'
+                """
+                line = line.rstrip()
+                # Numbered list: "1.", "2)", "1:", etc.
+                numbered_match = re.match(r'^(\d+)[.):]\s*(.*)$', line)
+                if numbered_match:
+                    return ('numbered', numbered_match.group(2))
+
+                # Bullet list: "-", "*", "•", "·"
+                bullet_match = re.match(r'^[-*•·]\s*(.*)$', line)
+                if bullet_match:
+                    return ('bullet', bullet_match.group(1))
+
+                return ('text', line)
+
+            def insert_paragraph_after(para, text, style=None):
+                """Insert a new paragraph after the given paragraph."""
+                new_p = doc.add_paragraph(text)
+                if style:
+                    try:
+                        new_p.style = style
+                    except KeyError:
+                        pass  # Style not available, use default
+                # Move the new paragraph to after the reference paragraph
+                para._p.addnext(new_p._p)
+                return new_p
+
+            def replace_with_formatted_content(para, new_text, parent_element=None):
+                """
+                Replace paragraph with formatted content, creating proper lists.
+                Returns list of paragraphs created (for tracking insertion point).
+                """
+                lines = new_text.split('\n')
+                if not lines:
+                    return [para]
+
+                # Parse all lines to understand the structure
+                parsed_lines = [(parse_line_type(line), line) for line in lines]
+
+                # Clear the original paragraph and set first content
                 for run in para.runs:
                     run.text = ""
 
-                # Split by newlines and handle multi-line content
-                lines = new_text.split('\n')
+                created_paragraphs = [para]
+                current_para = para
+                first_line = True
 
-                if para.runs:
-                    first_run = para.runs[0]
-                else:
-                    first_run = para.add_run()
+                for (line_type, content), original_line in parsed_lines:
+                    if first_line:
+                        # Use the original paragraph for the first line
+                        if line_type == 'numbered':
+                            try:
+                                para.style = 'List Number'
+                            except KeyError:
+                                pass
+                            if para.runs:
+                                para.runs[0].text = content
+                            else:
+                                para.add_run(content)
+                        elif line_type == 'bullet':
+                            try:
+                                para.style = 'List Bullet'
+                            except KeyError:
+                                pass
+                            if para.runs:
+                                para.runs[0].text = content
+                            else:
+                                para.add_run(content)
+                        else:
+                            if para.runs:
+                                para.runs[0].text = content
+                            else:
+                                para.add_run(content)
+                        first_line = False
+                    else:
+                        # Create new paragraphs for subsequent lines
+                        if line_type == 'numbered':
+                            new_para = insert_paragraph_after(current_para, content, 'List Number')
+                        elif line_type == 'bullet':
+                            new_para = insert_paragraph_after(current_para, content, 'List Bullet')
+                        else:
+                            # Plain text - check if it's empty (paragraph break)
+                            if content.strip():
+                                new_para = insert_paragraph_after(current_para, content)
+                            else:
+                                # Empty line - create empty paragraph for spacing
+                                new_para = insert_paragraph_after(current_para, '')
 
-                # Set first line
-                first_run.text = lines[0]
+                        created_paragraphs.append(new_para)
+                        current_para = new_para
 
-                # Add subsequent lines with line breaks
-                for line in lines[1:]:
-                    # Add a line break (soft return) then the text
-                    from docx.oxml.ns import qn
-                    from docx.oxml import OxmlElement
-                    br = OxmlElement('w:br')
-                    first_run._r.append(br)
-                    # Add text node after break
-                    t = OxmlElement('w:t')
-                    t.text = line
-                    # Preserve spaces
-                    t.set(qn('xml:space'), 'preserve')
-                    first_run._r.append(t)
+                return created_paragraphs
 
-            def replace_cell_text_multiline(cell, original_text, new_text, placeholders_dict, replaced_set):
-                """Replace text in a table cell, handling multi-line content."""
-                # For cells, we'll use the first paragraph and add line breaks
+            def replace_cell_content(cell, new_text):
+                """Replace cell content with formatted text including lists."""
+                # Clear existing paragraphs except the first
+                while len(cell.paragraphs) > 1:
+                    p = cell.paragraphs[-1]._element
+                    p.getparent().remove(p)
+
                 if cell.paragraphs:
-                    para = cell.paragraphs[0]
+                    first_para = cell.paragraphs[0]
+                    # Clear the first paragraph
+                    for run in first_para.runs:
+                        run.text = ""
 
-                    # Perform all replacements
-                    full_text = original_text
-                    for key, value in placeholders_dict.items():
-                        if key in full_text:
-                            full_text = full_text.replace(key, str(value))
-                            replaced_set.add(key)
+                    lines = new_text.split('\n')
+                    current_para = first_para
+                    first_line = True
 
-                    replace_paragraph_text_multiline(para, full_text)
+                    for line in lines:
+                        line_type, content = parse_line_type(line)
 
-                    # Remove extra paragraphs if any (keep just the first)
-                    while len(cell.paragraphs) > 1:
-                        p = cell.paragraphs[-1]._element
-                        p.getparent().remove(p)
+                        if first_line:
+                            if line_type == 'numbered':
+                                try:
+                                    first_para.style = 'List Number'
+                                except KeyError:
+                                    pass
+                            elif line_type == 'bullet':
+                                try:
+                                    first_para.style = 'List Bullet'
+                                except KeyError:
+                                    pass
+
+                            if first_para.runs:
+                                first_para.runs[0].text = content
+                            else:
+                                first_para.add_run(content)
+                            first_line = False
+                        else:
+                            # Add new paragraph to cell
+                            new_para = cell.add_paragraph(content)
+                            if line_type == 'numbered':
+                                try:
+                                    new_para.style = 'List Number'
+                                except KeyError:
+                                    pass
+                            elif line_type == 'bullet':
+                                try:
+                                    new_para.style = 'List Bullet'
+                                except KeyError:
+                                    pass
+                            current_para = new_para
 
             # Replace placeholders in paragraphs
-            for para in doc.paragraphs:
+            # We need to iterate carefully as we may insert new paragraphs
+            processed_paras = set()
+            para_index = 0
+            while para_index < len(doc.paragraphs):
+                para = doc.paragraphs[para_index]
+                if id(para) in processed_paras:
+                    para_index += 1
+                    continue
+
                 full_text = para.text
                 modified = False
                 for key, value in placeholders.items():
-                    # Support both raw keys and keys with delimiters
-                    # If key already has delimiters (e.g., <KEY> or {{KEY}}), use as-is
-                    # Otherwise, the key is used as-is (user must include delimiters)
                     if key in full_text:
                         full_text = full_text.replace(key, str(value))
                         actually_replaced.add(key)
                         modified = True
 
-                # If text was modified, update the paragraph with multi-line support
                 if modified:
-                    replace_paragraph_text_multiline(para, full_text)
+                    created = replace_with_formatted_content(para, full_text)
+                    for p in created:
+                        processed_paras.add(id(p))
+
+                processed_paras.add(id(para))
+                para_index += 1
 
             # Replace placeholders in tables
             for table in doc.tables:
                 for row in table.rows:
                     for cell in row.cells:
-                        # Get combined text from all paragraphs in cell
                         cell_text = '\n'.join(p.text for p in cell.paragraphs)
-                        has_placeholder = any(key in cell_text for key in placeholders.keys())
+                        modified = False
+                        for key, value in placeholders.items():
+                            if key in cell_text:
+                                cell_text = cell_text.replace(key, str(value))
+                                actually_replaced.add(key)
+                                modified = True
 
-                        if has_placeholder:
-                            replace_cell_text_multiline(cell, cell_text, cell_text, placeholders, actually_replaced)
+                        if modified:
+                            replace_cell_content(cell, cell_text)
 
         else:
             doc = Document()
