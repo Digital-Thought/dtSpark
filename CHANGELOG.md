@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a19] - 2026-02-12
+
+### Added
+- **Word Document Rich Text Formatting** - Support for inline formatting in placeholder replacement values
+  - `**bold**` for bold text
+  - `*italic*` or `_italic_` for italic text
+  - `__underline__` for underlined text
+  - `` `code` `` for monospace/Courier New font (10pt)
+  - Formatting works in both document body and table cells
+- Updated `create_word_document` tool description to document formatting syntax for MCP clients
+
+---
+
 ## [1.1.0a18] - 2026-02-12
 
 ### Added

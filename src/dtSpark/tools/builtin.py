@@ -1075,11 +1075,20 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                         },
                         "template_path": {
                             "type": "string",
-                            "description": "Alternative to 'content': path to a .docx template file with {{placeholder}} markers"
+                            "description": "Alternative to 'content': path to a .docx template file with placeholder markers (e.g., {{TITLE}} or <TITLE>)"
                         },
                         "placeholders": {
                             "type": "object",
-                            "description": "Only with template_path: dictionary mapping placeholder names to replacement values",
+                            "description": "Only with template_path: dictionary mapping placeholder names (including delimiters) to replacement values. "
+                                          "Keys must exactly match template text (e.g., '{{TITLE}}' or '<TITLE>'). "
+                                          "VALUES SUPPORT RICH FORMATTING: "
+                                          "**bold** for bold text, "
+                                          "*italic* or _italic_ for italics, "
+                                          "__underline__ for underlined text, "
+                                          "`code` for monospace/Courier New font. "
+                                          "LISTS: Lines starting with '1.' '2.' etc. become numbered lists; "
+                                          "lines starting with '- ' become bullet lists. "
+                                          "Use \\n for line breaks between items.",
                             "additionalProperties": {"type": "string"}
                         }
                     },
@@ -1643,6 +1652,8 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
 
             doc = Document(str(template_full))
             import re
+            from docx.shared import Pt
+            from docx.enum.text import WD_UNDERLINE
 
             def parse_line_type(line):
                 """
@@ -1655,21 +1666,103 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                 if numbered_match:
                     return ('numbered', numbered_match.group(2))
 
-                # Bullet list: "-", "*", "•", "·"
-                bullet_match = re.match(r'^[-*•·]\s*(.*)$', line)
+                # Bullet list: "-", "*", "•", "·" at start of line (not mid-text asterisks)
+                bullet_match = re.match(r'^[-•·]\s+(.*)$', line)
                 if bullet_match:
                     return ('bullet', bullet_match.group(1))
 
                 return ('text', line)
 
+            def parse_formatted_text(text):
+                """
+                Parse text for formatting markers and return list of segments.
+                Supports: **bold**, *italic*, _italic_, __underline__, `code`
+                Returns: list of (text, formatting_dict) tuples
+                """
+                segments = []
+                # Pattern to match formatting markers
+                # Order matters: ** before *, __ before _
+                pattern = re.compile(
+                    r'(\*\*(.+?)\*\*)'  # **bold**
+                    r'|(__(.+?)__)'      # __underline__
+                    r'|(\*(.+?)\*)'      # *italic*
+                    r'|(_(.+?)_)'        # _italic_
+                    r'|(`(.+?)`)'        # `code`
+                )
+
+                last_end = 0
+                for match in pattern.finditer(text):
+                    # Add any text before this match as plain text
+                    if match.start() > last_end:
+                        plain_text = text[last_end:match.start()]
+                        if plain_text:
+                            segments.append((plain_text, {}))
+
+                    # Determine which group matched and apply formatting
+                    if match.group(2):  # **bold**
+                        segments.append((match.group(2), {'bold': True}))
+                    elif match.group(4):  # __underline__
+                        segments.append((match.group(4), {'underline': True}))
+                    elif match.group(6):  # *italic*
+                        segments.append((match.group(6), {'italic': True}))
+                    elif match.group(8):  # _italic_
+                        segments.append((match.group(8), {'italic': True}))
+                    elif match.group(10):  # `code`
+                        segments.append((match.group(10), {'code': True}))
+
+                    last_end = match.end()
+
+                # Add any remaining text after the last match
+                if last_end < len(text):
+                    remaining = text[last_end:]
+                    if remaining:
+                        segments.append((remaining, {}))
+
+                # If no formatting found, return the whole text as plain
+                if not segments:
+                    segments.append((text, {}))
+
+                return segments
+
+            def add_formatted_runs(para, text):
+                """
+                Add text to paragraph with formatting applied.
+                Clears existing runs and creates new formatted runs.
+                """
+                # Clear existing runs
+                for run in para.runs:
+                    run.text = ""
+
+                # Parse and add formatted segments
+                segments = parse_formatted_text(text)
+
+                for segment_text, formatting in segments:
+                    if not segment_text:
+                        continue
+
+                    run = para.add_run(segment_text)
+
+                    if formatting.get('bold'):
+                        run.bold = True
+                    if formatting.get('italic'):
+                        run.italic = True
+                    if formatting.get('underline'):
+                        run.underline = WD_UNDERLINE.SINGLE
+                    if formatting.get('code'):
+                        run.font.name = 'Courier New'
+                        run.font.size = Pt(10)
+
             def insert_paragraph_after(para, text, style=None):
-                """Insert a new paragraph after the given paragraph."""
-                new_p = doc.add_paragraph(text)
+                """Insert a new paragraph after the given paragraph with formatting."""
+                new_p = doc.add_paragraph()  # Create empty paragraph
                 if style:
                     try:
                         new_p.style = style
                     except KeyError:
                         pass  # Style not available, use default
+                # Add formatted text
+                if text:
+                    add_formatted_runs(new_p, text)
                 # Move the new paragraph to after the reference paragraph
                 para._p.addnext(new_p._p)
                 return new_p
@@ -1702,24 +1795,13 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                                 para.style = 'List Number'
                             except KeyError:
                                 pass
-                            if para.runs:
-                                para.runs[0].text = content
-                            else:
-                                para.add_run(content)
                         elif line_type == 'bullet':
                             try:
                                 para.style = 'List Bullet'
                             except KeyError:
                                 pass
-                            if para.runs:
-                                para.runs[0].text = content
-                            else:
-                                para.add_run(content)
-                        else:
-                            if para.runs:
-                                para.runs[0].text = content
-                            else:
-                                para.add_run(content)
+                        # Add formatted content
+                        add_formatted_runs(para, content)
                         first_line = False
                     else:
                         # Create new paragraphs for subsequent lines
@@ -1771,15 +1853,12 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                                     first_para.style = 'List Bullet'
                                 except KeyError:
                                     pass
-
-                            if first_para.runs:
-                                first_para.runs[0].text = content
-                            else:
-                                first_para.add_run(content)
+                            # Add formatted content
+                            add_formatted_runs(first_para, content)
                             first_line = False
                         else:
                             # Add new paragraph to cell
-                            new_para = cell.add_paragraph(content)
+                            new_para = cell.add_paragraph()
                             if line_type == 'numbered':
                                 try:
                                     new_para.style = 'List Number'
@@ -1790,6 +1869,8 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                                     new_para.style = 'List Bullet'
                                 except KeyError:
                                     pass
+                            # Add formatted content
+                            add_formatted_runs(new_para, content)
                             current_para = new_para
 
             # Replace placeholders in paragraphs
