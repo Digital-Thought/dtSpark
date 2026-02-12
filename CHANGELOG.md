@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a17] - 2026-02-12
+
+### Fixed
+- **Word Document Multi-line Content** - Replacement text with newlines now renders correctly
+  - `\n` characters in replacement values are converted to Word line breaks (`w:br` elements)
+  - Multi-line content in table cells handled properly
+  - Preserves paragraph formatting while supporting multi-line text
+
+---
+
 ## [1.1.0a16] - 2026-02-12
 
 ### Added

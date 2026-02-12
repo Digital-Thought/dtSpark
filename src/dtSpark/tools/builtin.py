@@ -1643,6 +1643,57 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
 
             doc = Document(str(template_full))
 
+            def replace_paragraph_text_multiline(para, new_text):
+                """Replace paragraph text, handling multi-line content with line breaks."""
+                # Clear existing runs
+                for run in para.runs:
+                    run.text = ""
+
+                # Split by newlines and handle multi-line content
+                lines = new_text.split('\n')
+
+                if para.runs:
+                    first_run = para.runs[0]
+                else:
+                    first_run = para.add_run()
+
+                # Set first line
+                first_run.text = lines[0]
+
+                # Add subsequent lines with line breaks
+                for line in lines[1:]:
+                    # Add a line break (soft return) then the text
+                    from docx.oxml.ns import qn
+                    from docx.oxml import OxmlElement
+                    br = OxmlElement('w:br')
+                    first_run._r.append(br)
+                    # Add text node after break
+                    t = OxmlElement('w:t')
+                    t.text = line
+                    # Preserve spaces
+                    t.set(qn('xml:space'), 'preserve')
+                    first_run._r.append(t)
+
+            def replace_cell_text_multiline(cell, original_text, new_text, placeholders_dict, replaced_set):
+                """Replace text in a table cell, handling multi-line content."""
+                # For cells, we'll use the first paragraph and add line breaks
+                if cell.paragraphs:
+                    para = cell.paragraphs[0]
+
+                    # Perform all replacements
+                    full_text = original_text
+                    for key, value in placeholders_dict.items():
+                        if key in full_text:
+                            full_text = full_text.replace(key, str(value))
+                            replaced_set.add(key)
+
+                    replace_paragraph_text_multiline(para, full_text)
+
+                    # Remove extra paragraphs if any (keep just the first)
+                    while len(cell.paragraphs) > 1:
+                        p = cell.paragraphs[-1]._element
+                        p.getparent().remove(p)
+
             # Replace placeholders in paragraphs
             for para in doc.paragraphs:
                 full_text = para.text
@@ -1656,36 +1707,20 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                         actually_replaced.add(key)
                         modified = True
 
-                # If text was modified, update the paragraph
-                # Clear all runs and set new text (preserves paragraph formatting)
+                # If text was modified, update the paragraph with multi-line support
                 if modified:
-                    for run in para.runs:
-                        run.text = ""
-                    if para.runs:
-                        para.runs[0].text = full_text
-                    else:
-                        para.add_run(full_text)
+                    replace_paragraph_text_multiline(para, full_text)
 
             # Replace placeholders in tables
             for table in doc.tables:
                 for row in table.rows:
                     for cell in row.cells:
-                        for paragraph in cell.paragraphs:
-                            full_text = paragraph.text
-                            modified = False
-                            for key, value in placeholders.items():
-                                if key in full_text:
-                                    full_text = full_text.replace(key, str(value))
-                                    actually_replaced.add(key)
-                                    modified = True
+                        # Get combined text from all paragraphs in cell
+                        cell_text = '\n'.join(p.text for p in cell.paragraphs)
+                        has_placeholder = any(key in cell_text for key in placeholders.keys())
 
-                            if modified:
-                                for run in paragraph.runs:
-                                    run.text = ""
-                                if paragraph.runs:
-                                    paragraph.runs[0].text = full_text
-                                else:
-                                    paragraph.add_run(full_text)
+                        if has_placeholder:
+                            replace_cell_text_multiline(cell, cell_text, cell_text, placeholders, actually_replaced)
 
         else:
             doc = Document()
