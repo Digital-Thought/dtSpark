@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a16] - 2026-02-12
+
+### Added
+- **Configurable Compaction Settings** - Hierarchical control over context compaction
+  - Global config option `compaction.model` to lock compaction model for all conversations
+  - Global defaults for `compaction.threshold` and `compaction.summary_ratio`
+  - Per-conversation commands: `/compaction`, `/compaction-model`, `/compaction-threshold`, `/compaction-ratio`
+  - Database migration adds `compaction_model` and `compaction_summary_ratio` columns
+- **Web Search Feedback** - Real-time visibility into web search operations
+  - "Searching the web" indicator with spinner when web search starts
+  - Collapsible source list showing URLs, titles, and page dates accessed
+  - SSE events `web_search_start` and `web_search_results` for streaming updates
+  - Stores full content blocks (including `server_tool_use` and `web_search_tool_result`) in database
+
+### Fixed
+- **LLM API Error Display** - Errors now display in distinct error bubbles instead of assistant messages
+  - Structured error responses with `error_type`, `error_code`, and `suggestion` fields
+  - Context-aware suggestions (e.g., "Your account has insufficient credits" for billing errors)
+  - Visual styling with red gradient background and amber suggestion box
+- **Word Document Template Replacement** - Fix placeholder replacement not working
+  - Placeholders split across Word XML runs now replaced correctly
+  - Tool now reports only placeholders that were actually found and replaced
+  - Added `placeholders_not_found` field to identify missing placeholders in templates
+  - Placeholder keys used exactly as provided (include delimiters like `<>` or `{{}}` in keys)
+
+---
+
 ## [1.1.0a12] - 2026-02-09
 
 ### Added

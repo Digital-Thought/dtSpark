@@ -139,6 +139,19 @@ class ConversationDatabase:
                                                               compaction_threshold,
                                                               user_guid=self.user_guid)
 
+    def update_conversation_compaction_settings(self, conversation_id: int,
+                                                 compaction_model: Optional[str] = None,
+                                                 compaction_threshold: Optional[float] = None,
+                                                 compaction_summary_ratio: Optional[float] = None) -> bool:
+        """Update compaction settings for a specific conversation."""
+        return conv_module.update_conversation_compaction_settings(
+            self.conn, conversation_id,
+            compaction_model=compaction_model,
+            compaction_threshold=compaction_threshold,
+            compaction_summary_ratio=compaction_summary_ratio,
+            user_guid=self.user_guid
+        )
+
     def update_conversation_instructions(self, conversation_id: int,
                                         instructions: Optional[str]):
         """Update the instructions for a specific conversation."""

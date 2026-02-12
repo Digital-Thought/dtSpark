@@ -101,13 +101,18 @@ class ContextCompactor:
     This class implements a single-pass LLM-driven compaction that analyses
     conversation history and produces a structured, compressed representation
     while preserving critical information.
+
+    Supports hierarchical configuration:
+    - Global locked model (from config.yaml) - prevents per-conversation changes
+    - Per-conversation model, threshold, and ratio overrides
     """
 
     def __init__(self, bedrock_service, database, context_limit_resolver,
                  cli_interface=None, web_interface=None,
                  compaction_threshold: float = 0.7,
                  emergency_threshold: float = 0.95,
-                 compaction_ratio: float = 0.3):
+                 compaction_ratio: float = 0.3,
+                 config: Dict[str, Any] = None):
         """
         Initialise the context compactor.
 
@@ -120,18 +125,33 @@ class ContextCompactor:
             compaction_threshold: Fraction of context window to trigger compaction (default 0.7)
             emergency_threshold: Fraction of context window for emergency compaction (default 0.95)
             compaction_ratio: Target ratio for compacted content (default 0.3)
+            config: Optional config dict containing compaction settings (model, threshold, summary_ratio)
         """
         self.bedrock_service = bedrock_service
         self.database = database
         self.context_limit_resolver = context_limit_resolver
         self.cli_interface = cli_interface
         self.web_interface = web_interface
-        self.compaction_threshold = compaction_threshold
-        self.emergency_threshold = emergency_threshold
-        self.compaction_ratio = compaction_ratio
 
-        logging.info(f"ContextCompactor initialised with threshold={compaction_threshold}, "
-                    f"emergency={emergency_threshold}, ratio={compaction_ratio}")
+        # Load defaults from config if provided
+        compaction_config = (config or {}).get('compaction', {})
+
+        # Global locked model - if set, prevents per-conversation changes
+        self.locked_model = compaction_config.get('model')
+
+        # Store default values from config (used when resetting)
+        self.default_threshold = compaction_config.get('threshold', compaction_threshold)
+        self.default_ratio = compaction_config.get('summary_ratio', compaction_ratio)
+
+        # Instance settings (can be overridden per-conversation)
+        self.compaction_threshold = self.default_threshold
+        self.emergency_threshold = emergency_threshold
+        self.compaction_ratio = self.default_ratio
+        self.compaction_model = None  # Per-conversation override (None = use conversation's model)
+
+        logging.info(f"ContextCompactor initialised with threshold={self.compaction_threshold}, "
+                    f"emergency={emergency_threshold}, ratio={self.compaction_ratio}, "
+                    f"locked_model={self.locked_model}")
 
     def update_service(self, bedrock_service):
         """
@@ -153,8 +173,90 @@ class ContextCompactor:
         self.bedrock_service = bedrock_service
         logging.info(f"ContextCompactor service updated: {old_provider} -> {new_provider}")
 
+    def set_compaction_settings(self, model: str = None, threshold: float = None,
+                                 summary_ratio: float = None):
+        """
+        Update compaction settings. Model is ignored if globally locked.
+
+        Args:
+            model: Model to use for compaction (ignored if locked_model is set)
+            threshold: Compaction threshold (0.0-1.0)
+            summary_ratio: Summary ratio for compaction (0.0-1.0)
+        """
+        if model is not None and not self.locked_model:
+            self.compaction_model = model
+            logging.info(f"Compaction model set to: {model}")
+        elif model is not None and self.locked_model:
+            logging.warning(f"Cannot change compaction model - locked to: {self.locked_model}")
+
+        if threshold is not None:
+            self.compaction_threshold = threshold
+            logging.info(f"Compaction threshold set to: {threshold}")
+
+        if summary_ratio is not None:
+            self.compaction_ratio = summary_ratio
+            logging.info(f"Compaction ratio set to: {summary_ratio}")
+
+    def is_model_locked(self) -> bool:
+        """
+        Check if compaction model is locked by global config.
+
+        Returns:
+            True if model is locked, False otherwise
+        """
+        return self.locked_model is not None
+
+    def get_effective_model(self) -> Optional[str]:
+        """
+        Get the model to use for compaction.
+
+        Priority:
+        1. Locked model (from global config) - highest priority
+        2. Per-conversation model (if set)
+        3. None (use conversation's model)
+
+        Returns:
+            Model ID to use, or None to use conversation's model
+        """
+        if self.locked_model:
+            return self.locked_model
+        if self.compaction_model:
+            return self.compaction_model
+        return None
+
+    def get_settings(self) -> Dict[str, Any]:
+        """
+        Get current compaction settings.
+
+        Returns:
+            Dictionary with current settings:
+            - model: Per-conversation model (or None)
+            - model_locked: Whether model is locked by global config
+            - locked_model: The locked model ID (or None)
+            - threshold: Current compaction threshold
+            - summary_ratio: Current summary ratio
+            - effective_model: The model that will actually be used
+        """
+        return {
+            'model': self.compaction_model,
+            'model_locked': self.is_model_locked(),
+            'locked_model': self.locked_model,
+            'threshold': self.compaction_threshold,
+            'summary_ratio': self.compaction_ratio,
+            'effective_model': self.get_effective_model(),
+        }
+
+    def reset_to_defaults(self):
+        """Reset compaction settings to config defaults (excluding locked model)."""
+        self.compaction_threshold = self.default_threshold
+        self.compaction_ratio = self.default_ratio
+        self.compaction_model = None
+        logging.info(f"Compaction settings reset to defaults: threshold={self.default_threshold}, "
+                    f"ratio={self.default_ratio}")
+
     def check_and_compact(self, conversation_id: int, model_id: str,
-                          provider: str, in_tool_use_loop: bool = False) -> bool:
+                          provider: str, in_tool_use_loop: bool = False,
+                          compaction_service=None) -> bool:
         """
         Check if compaction is needed and perform it.
 
@@ -163,6 +265,8 @@ class ContextCompactor:
             model_id: Current model ID
             provider: Current provider name
             in_tool_use_loop: Whether currently in tool use sequence
+            compaction_service: Optional alternative LLM service for compaction
+                               (use when effective_model differs from conversation model)
 
         Returns:
             True if compaction was performed, False otherwise
@@ -190,7 +294,8 @@ class ContextCompactor:
                 self.cli_interface.print_warning(
                     f"Emergency compaction triggered at {current_tokens/context_window*100:.1f}% of context window"
                 )
-            return self._perform_compaction(conversation_id, model_id, provider, limits)
+            return self._perform_compaction(conversation_id, model_id, provider, limits,
+                                           compaction_service=compaction_service)
 
         # Defer during tool use unless emergency
         if in_tool_use_loop:
@@ -203,12 +308,14 @@ class ContextCompactor:
             usage_pct = current_tokens / context_window * 100
             logging.info(f"Compaction triggered: {current_tokens:,}/{compaction_threshold_tokens:,} tokens "
                         f"({usage_pct:.1f}%% of context window)")
-            return self._perform_compaction(conversation_id, model_id, provider, limits)
+            return self._perform_compaction(conversation_id, model_id, provider, limits,
+                                           compaction_service=compaction_service)
 
         return False
 
     def _perform_compaction(self, conversation_id: int, model_id: str,  # noqa: S1172
-                            provider: str, limits: Dict[str, int]) -> bool:
+                            provider: str, limits: Dict[str, int],
+                            compaction_service=None) -> bool:
         """
         Perform the actual context compaction.
 
@@ -217,12 +324,20 @@ class ContextCompactor:
             model_id: Current model ID
             provider: Current provider name
             limits: Context limits dict with 'context_window' and 'max_output'
+            compaction_service: Optional alternative LLM service for compaction
 
         Returns:
             True if successful, False otherwise
         """
+        # Use provided compaction service or fall back to default
+        service = compaction_service or self.bedrock_service
+
         start_time = datetime.now()
-        self._display_progress("🗜️  Starting intelligent context compaction...")
+        effective_model = self.get_effective_model()
+        if effective_model and effective_model != model_id:
+            self._display_progress(f"🗜️  Starting intelligent context compaction (using {effective_model})...")
+        else:
+            self._display_progress("🗜️  Starting intelligent context compaction...")
         self._display_separator()
 
         try:
@@ -247,7 +362,7 @@ class ContextCompactor:
             )
 
             rate_limit_check = self._check_rate_limits_for_compaction(
-                compaction_prompt, original_token_count
+                compaction_prompt, original_token_count, service
             )
             if not rate_limit_check['can_proceed']:
                 self._display_warning(rate_limit_check['message'])
@@ -255,16 +370,16 @@ class ContextCompactor:
                 return False
 
             max_compaction_tokens, _ = self._calculate_compaction_tokens(
-                compaction_prompt, original_token_count, limits
+                compaction_prompt, original_token_count, limits, service
             )
 
             self._display_info(f"Generating compacted context (target: {max_compaction_tokens:,} tokens)...")
 
-            compacted_content = self._invoke_compaction_model(compaction_prompt, max_compaction_tokens)
+            compacted_content = self._invoke_compaction_model(compaction_prompt, max_compaction_tokens, service)
             if compacted_content is None:
                 return False
 
-            compacted_token_count = self.bedrock_service.count_tokens(compacted_content)
+            compacted_token_count = service.count_tokens(compacted_content)
             if len(compacted_content) < 200:
                 logging.warning(f"Compacted content too brief ({len(compacted_content)} chars), aborting")
                 self._display_warning("Compacted content too brief, keeping original messages")
@@ -289,8 +404,11 @@ class ContextCompactor:
 
     def _calculate_compaction_tokens(self, compaction_prompt: str,
                                      original_token_count: int,
-                                     limits: Dict[str, int]) -> Tuple[int, int]:
+                                     limits: Dict[str, int],
+                                     service=None) -> Tuple[int, int]:
         """Calculate max compaction output tokens and estimate prompt size."""
+        service = service or self.bedrock_service
+
         max_compaction_tokens = min(
             limits.get('max_output', 8192),
             max(2000, int(original_token_count * self.compaction_ratio)),
@@ -298,9 +416,9 @@ class ContextCompactor:
         )
 
         context_window = limits.get('context_window', 8192)
-        if hasattr(self.bedrock_service, 'count_tokens'):
+        if hasattr(service, 'count_tokens'):
             try:
-                prompt_tokens = self.bedrock_service.count_tokens(compaction_prompt)
+                prompt_tokens = service.count_tokens(compaction_prompt)
             except Exception:
                 prompt_tokens = len(compaction_prompt) // 4
         else:
@@ -323,9 +441,12 @@ class ContextCompactor:
         )
         return max_compaction_tokens, prompt_tokens
 
-    def _invoke_compaction_model(self, compaction_prompt: str, max_tokens: int) -> Optional[str]:
+    def _invoke_compaction_model(self, compaction_prompt: str, max_tokens: int,
+                                  service=None) -> Optional[str]:
         """Invoke the LLM for compaction and return content, or None on failure."""
-        response = self.bedrock_service.invoke_model(
+        service = service or self.bedrock_service
+
+        response = service.invoke_model(
             [{'role': 'user', 'content': compaction_prompt}],
             max_tokens=max_tokens,
             temperature=0.2
@@ -407,7 +528,7 @@ class ContextCompactor:
         self._display_separator()
 
     def _check_rate_limits_for_compaction(
-        self, compaction_prompt: str, original_token_count: int
+        self, compaction_prompt: str, original_token_count: int, service=None
     ) -> Dict[str, Any]:
         """
         Check if the compaction request would exceed provider rate limits.
@@ -415,6 +536,7 @@ class ContextCompactor:
         Args:
             compaction_prompt: The full compaction prompt to be sent
             original_token_count: Original token count of messages being compacted
+            service: Optional LLM service to check limits for (defaults to self.bedrock_service)
 
         Returns:
             Dictionary with:
@@ -422,10 +544,12 @@ class ContextCompactor:
             - message: str - Explanation message
             - estimated_tokens: int - Estimated input tokens for the request
         """
+        service = service or self.bedrock_service
+
         # Get rate limits from the service
         rate_limits = None
-        if hasattr(self.bedrock_service, 'get_rate_limits'):
-            rate_limits = self.bedrock_service.get_rate_limits()
+        if hasattr(service, 'get_rate_limits'):
+            rate_limits = service.get_rate_limits()
 
         # If no rate limits or provider doesn't have limits, proceed
         if not rate_limits or not rate_limits.get('has_limits', False):
@@ -437,9 +561,9 @@ class ContextCompactor:
 
         # Estimate input tokens for the compaction request
         # Use the service's token counter if available
-        if hasattr(self.bedrock_service, 'count_tokens'):
+        if hasattr(service, 'count_tokens'):
             try:
-                estimated_tokens = self.bedrock_service.count_tokens(compaction_prompt)
+                estimated_tokens = service.count_tokens(compaction_prompt)
             except Exception:
                 # Fallback: estimate at 4 chars per token
                 estimated_tokens = len(compaction_prompt) // 4
@@ -452,10 +576,10 @@ class ContextCompactor:
         if input_limit and estimated_tokens > input_limit:
             # Request exceeds rate limit - cannot proceed
             provider_name = "Anthropic Direct"
-            if hasattr(self.bedrock_service, 'get_provider_name'):
-                provider_name = self.bedrock_service.get_provider_name()
-            elif hasattr(self.bedrock_service, 'get_active_provider'):
-                provider_name = self.bedrock_service.get_active_provider() or provider_name
+            if hasattr(service, 'get_provider_name'):
+                provider_name = service.get_provider_name()
+            elif hasattr(service, 'get_active_provider'):
+                provider_name = service.get_active_provider() or provider_name
 
             message = (
                 f"Compaction request ({estimated_tokens:,} tokens) exceeds {provider_name} "

@@ -77,6 +77,42 @@ body {
     text-align: center;
 }
 
+.chat-message.error {
+    background: linear-gradient(135deg, #6b2020 0%, #4a1a1a 100%);
+    border-left: 4px solid #dc3545;
+    margin-right: 20%;
+}
+
+.chat-message.error .message-header {
+    color: #ff8a8a;
+}
+
+.chat-message.error .message-header i {
+    color: #ffc107;
+}
+
+.chat-message.error .error-details {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.chat-message.error .error-suggestion {
+    margin-top: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    background-color: rgba(255, 193, 7, 0.15);
+    border-left: 3px solid #ffc107;
+    border-radius: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.chat-message.error .error-suggestion i {
+    color: #ffc107;
+    margin-right: 0.5rem;
+}
+
 .chat-message .message-header {
     font-size: 0.85rem;
     opacity: 0.8;
@@ -166,6 +202,113 @@ body {
     margin: 0;
     white-space: pre-wrap;
     word-wrap: break-word;
+}
+
+/* Web search indicators */
+.web-search-indicator {
+    background: linear-gradient(135deg, #1a3a5a 0%, #2a4a6a 100%);
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    margin-right: 20%;
+    border-radius: 0.5rem;
+    border-left: 3px solid var(--spark-cyan);
+}
+
+.web-search-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.web-search-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--spark-cyan);
+}
+
+.web-search-left i {
+    font-size: 1.1rem;
+}
+
+.web-search-spinner {
+    color: var(--spark-cyan);
+}
+
+/* Web search results */
+.web-search-results {
+    background-color: #2a3a4a;
+    padding: 0.75rem;
+    margin: 0.5rem 0;
+    margin-right: 20%;
+    border-radius: 0.5rem;
+}
+
+.web-search-results-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.web-search-results-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #9e9e9e;
+}
+
+.web-search-results-header button {
+    background: none;
+    border: none;
+    color: #aaa;
+    padding: 0.25rem;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.web-search-results-header button:hover {
+    color: #fff;
+}
+
+.web-search-sources-content {
+    display: none;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--spark-border-color);
+}
+
+.web-search-sources-content.expanded {
+    display: block;
+}
+
+.web-search-sources {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.web-search-sources li {
+    padding: 0.25rem 0;
+    font-size: 0.85rem;
+}
+
+.web-search-sources a {
+    color: var(--spark-cyan);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.web-search-sources a:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
+.web-search-sources i {
+    font-size: 0.9rem;
 }
 
 /* Rollup summary */

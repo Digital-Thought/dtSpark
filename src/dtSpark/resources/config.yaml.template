@@ -162,6 +162,29 @@ conversation:
   max_tool_selections: 30  # Maximum number of tools to send with each request (reduces token usage)
   emergency_rollup_threshold: 0.95  # Force rollup at 95% even during tool use to prevent max_tokens errors
 
+# Compaction Configuration
+# Controls how context compaction (summarisation) behaves
+compaction:
+  # If set, locks compaction to use this specific model for ALL conversations
+  # When null, each conversation uses its own model for compaction (default)
+  # Setting this prevents users from changing the compaction model per-conversation
+  # Example: model: "anthropic.claude-3-haiku-20240307-v1:0"
+  model: null
+
+  # Default compaction threshold (0.0-1.0, fraction of context window)
+  # Compaction triggers when context exceeds this percentage of the model's context window
+  # Lower values = more aggressive compaction (saves tokens, may lose context)
+  # Higher values = less compaction (preserves context, uses more tokens)
+  # Can be overridden per-conversation via /compaction-threshold command
+  threshold: 0.30
+
+  # Default summary ratio (0.0-1.0, target compression level)
+  # Determines how much to compress the conversation during compaction
+  # Lower values = more aggressive compression (shorter summaries)
+  # Higher values = less compression (longer, more detailed summaries)
+  # Can be overridden per-conversation via /compaction-ratio command
+  summary_ratio: 0.25
+
 # Model Context Window Limits
 # Maps model ID patterns to context window sizes (in tokens)
 # Used for intelligent context compaction when approaching model limits

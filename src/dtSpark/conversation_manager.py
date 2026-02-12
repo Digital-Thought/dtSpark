@@ -100,7 +100,8 @@ class ConversationManager:
             web_interface=web_interface,
             compaction_threshold=rollup_threshold,
             emergency_threshold=emergency_rollup_threshold,
-            compaction_ratio=rollup_summary_ratio
+            compaction_ratio=rollup_summary_ratio,
+            config=config  # Pass config for locked model and defaults
         )
         logging.info("ConversationManager initialised with intelligent context compaction")
 
@@ -204,14 +205,13 @@ class ConversationManager:
         self.web_search_enabled = web_search_enabled
         self._web_search_active = True  # Reset per-request toggle for new conversations
 
-        # Update context compactor with conversation-specific threshold if set
+        # Reset compaction settings to defaults for new conversation
+        self.context_compactor.reset_to_defaults()
+
+        # Apply conversation-specific threshold if set
         if compaction_threshold is not None:
-            self.context_compactor.compaction_threshold = compaction_threshold
+            self.context_compactor.set_compaction_settings(threshold=compaction_threshold)
             logging.info(f"Using conversation-specific compaction threshold: {compaction_threshold:.0%}")
-        else:
-            # Reset to global default
-            self.context_compactor.compaction_threshold = self.rollup_threshold
-            logging.info(f"Using global default compaction threshold: {self.rollup_threshold:.0%}")
 
         logging.info(f"Created new conversation: {name} (ID: {conversation_id}, web_search: {web_search_enabled})")
         return conversation_id
@@ -241,15 +241,26 @@ class ConversationManager:
                 self.max_tokens = self.default_max_tokens
                 logging.info(f"Using global default max_tokens: {self.default_max_tokens}")
 
-            # Load conversation-specific compaction_threshold if set (otherwise use global default)
+            # Load conversation-specific compaction settings (reset to defaults first)
+            self.context_compactor.reset_to_defaults()
+
+            # Load threshold override if set
             conversation_compaction_threshold = conversation.get('compaction_threshold')
             if conversation_compaction_threshold is not None:
-                self.context_compactor.compaction_threshold = conversation_compaction_threshold
+                self.context_compactor.set_compaction_settings(threshold=conversation_compaction_threshold)
                 logging.info(f"Using conversation-specific compaction threshold: {conversation_compaction_threshold:.0%}")
-            else:
-                # Reset to global default (in case previous conversation had custom value)
-                self.context_compactor.compaction_threshold = self.rollup_threshold
-                logging.info(f"Using global default compaction threshold: {self.rollup_threshold:.0%}")
+
+            # Load model override if set (and not globally locked)
+            conversation_compaction_model = conversation.get('compaction_model')
+            if conversation_compaction_model is not None:
+                self.context_compactor.set_compaction_settings(model=conversation_compaction_model)
+                logging.info(f"Using conversation-specific compaction model: {conversation_compaction_model}")
+
+            # Load summary ratio override if set
+            conversation_compaction_ratio = conversation.get('compaction_summary_ratio')
+            if conversation_compaction_ratio is not None:
+                self.context_compactor.set_compaction_settings(summary_ratio=conversation_compaction_ratio)
+                logging.info(f"Using conversation-specific compaction ratio: {conversation_compaction_ratio:.0%}")
 
             # Load web search setting
             self.web_search_enabled = conversation.get('web_search_enabled', False)
@@ -312,6 +323,94 @@ class ConversationManager:
                     }
 
         return web_search_config
+
+    # Compaction settings methods
+
+    def get_compaction_settings(self) -> Dict[str, Any]:
+        """
+        Get current compaction settings.
+
+        Returns:
+            Dictionary with current settings:
+            - model: Per-conversation model (or None)
+            - model_locked: Whether model is locked by global config
+            - locked_model: The locked model ID (or None)
+            - threshold: Current compaction threshold
+            - summary_ratio: Current summary ratio
+            - effective_model: The model that will actually be used
+        """
+        return self.context_compactor.get_settings()
+
+    def set_compaction_model(self, model_id: str) -> Tuple[bool, str]:
+        """
+        Set compaction model for current conversation.
+
+        Args:
+            model_id: Model ID to use for compaction
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if not self.current_conversation_id:
+            return False, _ERR_NO_ACTIVE_CONVERSATION
+
+        if self.context_compactor.is_model_locked():
+            locked = self.context_compactor.locked_model
+            return False, f"Compaction model is locked to '{locked}' in config"
+
+        # Validate model exists (simple check - model ID format)
+        if not model_id or len(model_id) < 3:
+            return False, f"Invalid model ID: '{model_id}'"
+
+        self.context_compactor.set_compaction_settings(model=model_id)
+        self.database.update_conversation_compaction_settings(
+            self.current_conversation_id, compaction_model=model_id
+        )
+        return True, f"Compaction model set to '{model_id}'"
+
+    def set_compaction_threshold(self, threshold: float) -> Tuple[bool, str]:
+        """
+        Set compaction threshold for current conversation.
+
+        Args:
+            threshold: Threshold value (0.0-1.0)
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if not self.current_conversation_id:
+            return False, _ERR_NO_ACTIVE_CONVERSATION
+
+        if not 0.0 < threshold < 1.0:
+            return False, "Threshold must be between 0.0 and 1.0"
+
+        self.context_compactor.set_compaction_settings(threshold=threshold)
+        self.database.update_conversation_compaction_settings(
+            self.current_conversation_id, compaction_threshold=threshold
+        )
+        return True, f"Compaction threshold set to {threshold:.0%}"
+
+    def set_compaction_summary_ratio(self, ratio: float) -> Tuple[bool, str]:
+        """
+        Set summary ratio for current conversation.
+
+        Args:
+            ratio: Summary ratio value (0.0-1.0)
+
+        Returns:
+            Tuple of (success, message)
+        """
+        if not self.current_conversation_id:
+            return False, _ERR_NO_ACTIVE_CONVERSATION
+
+        if not 0.0 < ratio < 1.0:
+            return False, "Summary ratio must be between 0.0 and 1.0"
+
+        self.context_compactor.set_compaction_settings(summary_ratio=ratio)
+        self.database.update_conversation_compaction_settings(
+            self.current_conversation_id, compaction_summary_ratio=ratio
+        )
+        return True, f"Summary ratio set to {ratio:.0%}"
 
     def add_user_message(self, content: str) -> int:
         """
@@ -554,6 +653,47 @@ class ConversationManager:
                 return content
 
         return None
+
+    @staticmethod
+    def _get_error_suggestion(error_code: str, error_message: str) -> str:
+        """
+        Get a helpful suggestion based on the error type.
+
+        Args:
+            error_code: The error code from the API
+            error_message: The error message from the API
+
+        Returns:
+            A suggestion string for the user
+        """
+        error_code = error_code or ''
+        error_message = error_message or ''
+        error_message_lower = error_message.lower()
+
+        if 'ThrottlingException' in error_code or 'TooManyRequestsException' in error_code:
+            return "You're hitting rate limits. Wait a moment and try again."
+        elif 'ModelTimeoutException' in error_code or 'timeout' in error_message_lower:
+            return "The request timed out. Try simplifying your request or reducing conversation history."
+        elif 'ValidationException' in error_code:
+            return "There's an issue with the request format. Check your message content and tool configurations."
+        elif 'ModelNotReadyException' in error_code:
+            return "The model is not ready. Wait a moment and try again."
+        elif 'ServiceUnavailableException' in error_code or 'InternalServerError' in error_code:
+            return "The service is experiencing issues. Wait a moment and try again."
+        elif 'AccessDeniedException' in error_code or 'UnauthorizedException' in error_code:
+            return "Check your credentials and permissions for API access."
+        elif 'ModelStreamErrorException' in error_code:
+            return "There was an error in the model's response stream. Try again."
+        elif 'credit balance' in error_message_lower or 'billing' in error_message_lower:
+            return "Your account has insufficient credits. Please check your billing settings."
+        elif 'rate limit' in error_message_lower:
+            return "You've exceeded the rate limit. Wait a moment and try again."
+        elif 'invalid_request' in error_message_lower or 'invalid request' in error_message_lower:
+            return "The request was invalid. Check your message and try again."
+        elif 'overloaded' in error_message_lower:
+            return "The service is currently overloaded. Please try again later."
+        else:
+            return "Check the application logs for more details."
 
     def _check_and_perform_rollup(self):
         """
@@ -1747,6 +1887,9 @@ Current date and time: {datetime_str}"""
                     if retries_attempted > 0:
                         logging.error(f"Failed after {retries_attempted} retry attempt(s)")
 
+                    # Get suggestion based on error type
+                    suggestion = self._get_error_suggestion(error_code, error_message)
+
                     if self.cli_interface:
                         self.cli_interface.print_separator("─")
                         self.cli_interface.print_error(f"✗ Failed to get response from the model")
@@ -1754,36 +1897,41 @@ Current date and time: {datetime_str}"""
                             self.cli_interface.print_error(f"(Failed after {retries_attempted} retry attempt(s))")
                         self.cli_interface.print_error(f"Error Code: {error_code}")
                         self.cli_interface.print_error(f"Error Message: {error_message}")
-
-                        # Provide helpful suggestions based on error type
-                        if 'ThrottlingException' in error_code or 'TooManyRequestsException' in error_code:
-                            self.cli_interface.print_info("💡 Suggestion: You're hitting rate limits. Wait a moment and try again.")
-                        elif 'ModelTimeoutException' in error_code or 'timeout' in error_message.lower():
-                            self.cli_interface.print_info("💡 Suggestion: The request timed out. Try simplifying your request or reducing conversation history.")
-                        elif 'ValidationException' in error_code:
-                            self.cli_interface.print_info("💡 Suggestion: There's an issue with the request format. Check your message content and tool configurations.")
-                        elif 'ModelNotReadyException' in error_code:
-                            self.cli_interface.print_info("💡 Suggestion: The model is not ready. Wait a moment and try again.")
-                        elif 'ServiceUnavailableException' in error_code or 'InternalServerError' in error_code:
-                            self.cli_interface.print_info("💡 Suggestion: AWS Bedrock service is experiencing issues. Wait a moment and try again.")
-                        elif 'AccessDeniedException' in error_code or 'UnauthorizedException' in error_code:
-                            self.cli_interface.print_info("💡 Suggestion: Check your AWS credentials and permissions for Bedrock access.")
-                        elif 'ModelStreamErrorException' in error_code:
-                            self.cli_interface.print_info("💡 Suggestion: There was an error in the model's response stream. Try again.")
-                        else:
-                            self.cli_interface.print_info("💡 Suggestion: Check the application logs for more details.")
-
+                        if suggestion:
+                            self.cli_interface.print_info(f"💡 Suggestion: {suggestion}")
                         self.cli_interface.print_separator("─")
+
+                    # Clear tool use flag even on failure
+                    self._in_tool_use_loop = False
+                    self._check_and_perform_rollup()
+
+                    # Return structured error for web UI
+                    return {
+                        '_error': True,
+                        'error_type': error_type,
+                        'error_code': error_code,
+                        'error_message': error_message,
+                        'suggestion': suggestion,
+                        'retries_attempted': retries_attempted
+                    }
                 else:
                     logging.error("Failed to get response from model - no response received")
                     if self.cli_interface:
                         self.cli_interface.print_error("✗ Failed to get response from the model (no response received)")
 
-                # Clear tool use flag even on failure
-                self._in_tool_use_loop = False
-                self._check_and_perform_rollup()
+                    # Clear tool use flag even on failure
+                    self._in_tool_use_loop = False
+                    self._check_and_perform_rollup()
 
-                return None
+                    # Return structured error for web UI
+                    return {
+                        '_error': True,
+                        'error_type': 'NoResponse',
+                        'error_code': 'NoResponse',
+                        'error_message': 'No response received from the model',
+                        'suggestion': 'The model did not respond. Try again or check your connection.',
+                        'retries_attempted': 0
+                    }
 
             # Track API token usage
             usage = response.get('usage', {})
@@ -1978,6 +2126,14 @@ Current date and time: {datetime_str}"""
                 # Model gave a final answer (or incomplete response)
                 assistant_message = self._extract_text_from_content(response.get('content', ''))
 
+                # Check if response contains web search blocks (server_tool_use or web_search_tool_result)
+                has_web_search = any(
+                    block.get('type') in ('server_tool_use', 'web_search_tool_result')
+                    for block in content_blocks
+                )
+                # If web search was used, we'll store full content blocks to preserve that info
+                web_search_content_json = json.dumps(content_blocks) if has_web_search else None
+
                 # Check if this looks like an incomplete response (model said it would do something but didn't)
                 if assistant_message and stop_reason == 'max_tokens':
                     logging.warning(f"Model response may be incomplete (stop_reason: max_tokens). "
@@ -2032,7 +2188,12 @@ Current date and time: {datetime_str}"""
 
                 if assistant_message:
                     # Add assistant's final response to conversation
-                    self.add_assistant_message(assistant_message)
+                    # If web search was used, store full content blocks to preserve search info
+                    if web_search_content_json:
+                        self.add_assistant_message(web_search_content_json)
+                        logging.debug("Stored assistant response with web search content blocks")
+                    else:
+                        self.add_assistant_message(assistant_message)
 
                     # Detect if this is a synthesis/summary response that aggregates data
                     # If so, prompt user to verify calculations to catch potential errors

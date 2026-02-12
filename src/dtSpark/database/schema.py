@@ -119,6 +119,24 @@ def initialise_schema(conn, backend=None):
         conn.commit()
         logging.info("Added web_search_enabled column to conversations table")
 
+    # Migration: Add compaction_model column if it doesn't exist
+    try:
+        cursor.execute("SELECT compaction_model FROM conversations LIMIT 1")
+    except sqlite3.OperationalError:
+        # Column doesn't exist, add it (NULL means use conversation's model or global locked model)
+        cursor.execute("ALTER TABLE conversations ADD COLUMN compaction_model TEXT DEFAULT NULL")
+        conn.commit()
+        logging.info("Added compaction_model column to conversations table")
+
+    # Migration: Add compaction_summary_ratio column if it doesn't exist
+    try:
+        cursor.execute("SELECT compaction_summary_ratio FROM conversations LIMIT 1")
+    except sqlite3.OperationalError:
+        # Column doesn't exist, add it (NULL means use global default from config)
+        cursor.execute("ALTER TABLE conversations ADD COLUMN compaction_summary_ratio REAL DEFAULT NULL")
+        conn.commit()
+        logging.info("Added compaction_summary_ratio column to conversations table")
+
     # Messages table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (

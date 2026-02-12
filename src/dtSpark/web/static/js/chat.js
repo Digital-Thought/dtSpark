@@ -104,21 +104,37 @@ function appendRegularMessage(role, content, timestamp = null) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `chat-message ${role}`;
 
+    // Determine icon, label and styling based on role
+    let icon, label, showCopyBtn;
+    if (role === 'user') {
+        icon = 'person-fill';
+        label = 'You';
+        showCopyBtn = true;
+    } else if (role === 'error') {
+        icon = 'exclamation-triangle-fill';
+        label = 'Error';
+        showCopyBtn = false;
+    } else {
+        icon = 'robot';
+        label = 'Assistant';
+        showCopyBtn = true;
+    }
+
     // Generate unique ID for the copy button
     const copyBtnId = 'copy-btn-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
 
-    // Create message header with copy icon
+    // Create message header with copy icon (optional)
     const header = document.createElement('div');
     header.className = 'message-header d-flex justify-content-between align-items-center';
     header.innerHTML = `
         <div>
-            <i class="bi bi-${role === 'user' ? 'person-fill' : 'robot'}"></i>
-            <strong>${role === 'user' ? 'You' : 'Assistant'}</strong>
+            <i class="bi bi-${icon}"></i>
+            <strong>${label}</strong>
             ${timestamp ? `<span class="ms-2 text-muted small">${formatTimestamp(timestamp)}</span>` : ''}
         </div>
-        <button id="${copyBtnId}" class="btn btn-link btn-sm p-0 copy-icon-btn" title="Copy to clipboard">
+        ${showCopyBtn ? `<button id="${copyBtnId}" class="btn btn-link btn-sm p-0 copy-icon-btn" title="Copy to clipboard">
             <i class="bi bi-clipboard"></i>
-        </button>
+        </button>` : ''}
     `;
 
     // Create message content
@@ -128,6 +144,9 @@ function appendRegularMessage(role, content, timestamp = null) {
     if (role === 'assistant') {
         // Render markdown for assistant messages
         contentDiv.innerHTML = marked.parse(content);
+    } else if (role === 'error') {
+        // Error messages are displayed as HTML (pre-formatted)
+        contentDiv.innerHTML = content;
     } else {
         // Plain text for user messages
         contentDiv.textContent = content;
@@ -138,9 +157,11 @@ function appendRegularMessage(role, content, timestamp = null) {
     messagesContainer.appendChild(messageDiv);
 
     // Add click handler for copy button after element is in DOM
-    const copyBtn = document.getElementById(copyBtnId);
-    if (copyBtn) {
-        copyBtn.onclick = () => copyMessageToClipboard(content, copyBtn);
+    if (showCopyBtn) {
+        const copyBtn = document.getElementById(copyBtnId);
+        if (copyBtn) {
+            copyBtn.onclick = () => copyMessageToClipboard(content, copyBtn);
+        }
     }
 
     // Render mermaid diagrams if present (async, non-blocking)
@@ -371,6 +392,119 @@ function appendToolResult(toolName, toolResult) {
 }
 
 /**
+ * Append a web search start indicator
+ * @param {string} toolUseId - Tool use ID for matching with results
+ * @param {object} input - Search input/query if available
+ */
+function appendWebSearchStart(toolUseId, input) {
+    const messagesContainer = document.getElementById('chat-messages');
+    const elementId = `web-search-${toolUseId || generateToolId()}`;
+
+    const searchDiv = document.createElement('div');
+    searchDiv.className = 'web-search-indicator';
+    searchDiv.id = elementId;
+
+    // Try to extract query from input
+    const query = input?.query || '';
+    const queryDisplay = query ? `: "${escapeHtml(query)}"` : '';
+
+    searchDiv.innerHTML = `
+        <div class="web-search-header">
+            <div class="web-search-left">
+                <i class="bi bi-globe spin"></i>
+                <span>Searching the web${queryDisplay}</span>
+            </div>
+            <div class="web-search-spinner">
+                <div class="spinner-border spinner-border-sm" role="status">
+                    <span class="visually-hidden">Searching...</span>
+                </div>
+            </div>
+        </div>
+    `;
+
+    messagesContainer.appendChild(searchDiv);
+    scrollToBottom();
+}
+
+/**
+ * Append web search results with source links
+ * @param {string} toolUseId - Tool use ID to match with start indicator
+ * @param {Array} sources - Array of source objects with url, title, page_age
+ * @param {number} sourceCount - Number of sources found
+ */
+function appendWebSearchResults(toolUseId, sources, sourceCount) {
+    const messagesContainer = document.getElementById('chat-messages');
+    const elementId = `web-search-results-${toolUseId || generateToolId()}`;
+
+    // Find and update the corresponding search indicator if it exists
+    const startIndicator = document.getElementById(`web-search-${toolUseId}`);
+    if (startIndicator) {
+        // Remove the spinner
+        const spinner = startIndicator.querySelector('.web-search-spinner');
+        if (spinner) {
+            spinner.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i>`;
+        }
+    }
+
+    const resultsDiv = document.createElement('div');
+    resultsDiv.className = 'web-search-results';
+    resultsDiv.id = elementId;
+
+    let sourcesHtml = '';
+    if (sources && sources.length > 0) {
+        sourcesHtml = '<ul class="web-search-sources">';
+        for (const source of sources) {
+            const title = source.title || source.url || 'Unknown source';
+            const url = source.url || '#';
+            const pageAge = source.page_age ? ` <span class="text-muted small">(${escapeHtml(source.page_age)})</span>` : '';
+            sourcesHtml += `
+                <li>
+                    <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+                        <i class="bi bi-link-45deg"></i> ${escapeHtml(title)}
+                    </a>${pageAge}
+                </li>
+            `;
+        }
+        sourcesHtml += '</ul>';
+    }
+
+    resultsDiv.innerHTML = `
+        <div class="web-search-results-header" onclick="toggleWebSearchSources('${elementId}')">
+            <div class="web-search-results-left">
+                <i class="bi bi-search"></i>
+                <span>Found ${sourceCount} source${sourceCount !== 1 ? 's' : ''}</span>
+            </div>
+            <button onclick="event.stopPropagation(); toggleWebSearchSources('${elementId}')" title="Show/Hide sources">
+                <i class="bi bi-chevron-down" id="${elementId}-toggle-icon"></i>
+            </button>
+        </div>
+        <div class="web-search-sources-content" id="${elementId}-content">
+            ${sourcesHtml}
+        </div>
+    `;
+
+    messagesContainer.appendChild(resultsDiv);
+    scrollToBottom();
+}
+
+/**
+ * Toggle web search sources visibility
+ * @param {string} elementId - Element ID of the results container
+ */
+function toggleWebSearchSources(elementId) {
+    const content = document.getElementById(`${elementId}-content`);
+    const icon = document.getElementById(`${elementId}-toggle-icon`);
+
+    if (content) {
+        content.classList.toggle('expanded');
+        if (icon) {
+            icon.classList.toggle('bi-chevron-down');
+            icon.classList.toggle('bi-chevron-up');
+        }
+    }
+}
+
+/**
  * Append a status message (e.g., "Processing...", "Generating response...")
  * @param {string} message - Status message
  * @param {string} id - Optional ID for the status element (for later removal)
@@ -448,9 +582,10 @@ function hideTypingIndicator() {
  * Update an assistant message with streaming content
  * @param {string} content - The content to append
  * @param {HTMLElement} messageElement - The message element to update (optional)
+ * @param {string} timestamp - ISO timestamp string (optional, defaults to current time)
  * @returns {HTMLElement} The message element
  */
-function updateStreamingMessage(content, messageElement = null) {
+function updateStreamingMessage(content, messageElement = null, timestamp = null) {
     console.log('updateStreamingMessage called with content:', content, 'messageElement:', messageElement);
 
     if (!messageElement) {
@@ -463,11 +598,15 @@ function updateStreamingMessage(content, messageElement = null) {
         // Generate unique ID for the copy button
         const copyBtnId = 'stream-copy-btn-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
 
+        // Use provided timestamp or current time
+        const displayTimestamp = timestamp || new Date().toISOString();
+
         messageElement.innerHTML = `
             <div class="message-header d-flex justify-content-between align-items-center">
                 <div>
                     <i class="bi bi-robot"></i>
                     <strong>Assistant</strong>
+                    <span class="ms-2 text-muted small">${formatTimestamp(displayTimestamp)}</span>
                 </div>
                 <button id="${copyBtnId}" class="btn btn-link btn-sm p-0 copy-icon-btn" title="Copy to clipboard">
                     <i class="bi bi-clipboard"></i>

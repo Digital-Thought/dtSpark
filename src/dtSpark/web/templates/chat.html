@@ -128,6 +128,9 @@ document.getElementById('infoModal').addEventListener('show.bs.modal', function(
                     <button class="list-group-item list-group-item-action" onclick="executeCommand('instructions')">
                         <i class="bi bi-card-text"></i> Change Instructions
                     </button>
+                    <button class="list-group-item list-group-item-action" onclick="executeCommand('compaction')">
+                        <i class="bi bi-layers"></i> Compaction Settings
+                    </button>
                     <button class="list-group-item list-group-item-action" onclick="executeCommand('copy')">
                         <i class="bi bi-clipboard"></i> Copy Last Response
                     </button>
@@ -198,8 +201,8 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
     sendBtn.disabled = true;
     sendBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Sending...';
 
-    // Add user message to chat
-    appendMessage('user', message);
+    // Add user message to chat with current timestamp
+    appendMessage('user', message, new Date().toISOString());
 
     // Send message via SSE (include web search active state)
     await sendMessageWithSSE(conversationId, message, webSearchActive);
@@ -250,6 +253,9 @@ async function executeCommand(command) {
             break;
         case 'deletefiles':
             await showDeleteFilesModal();
+            break;
+        case 'compaction':
+            await showCompactionSettingsModal();
             break;
         case 'delete':
             await confirmDeleteConversation();
@@ -969,6 +975,159 @@ async function clearInstructions() {
         }
     } catch (error) {
         showToast('Failed to clear instructions', 'error');
+    }
+}
+
+// Show compaction settings modal
+async function showCompactionSettingsModal() {
+    try {
+        // Load current compaction settings
+        const response = await fetch(`/api/chat/${conversationId}/command/compaction`, {
+            method: 'GET'
+        });
+        const data = await response.json();
+        const settings = data.data;
+
+        const modelLocked = settings.model_locked;
+        const lockedModel = settings.locked_model;
+        const currentModel = settings.model || '';
+        const threshold = (settings.threshold * 100).toFixed(0);
+        const ratio = (settings.summary_ratio * 100).toFixed(0);
+
+        const modelDisabledAttr = modelLocked ? 'disabled' : '';
+        const modelLockNote = modelLocked
+            ? `<div class="text-muted small mt-1"><i class="bi bi-lock"></i> Model locked to: <code>${escapeHtml(lockedModel)}</code></div>`
+            : '';
+
+        const modalHTML = `
+            <div class="modal fade" id="compactionModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title"><i class="bi bi-layers"></i> Compaction Settings</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="compaction-model" class="form-label">Compaction Model</label>
+                                <input type="text" class="form-control" id="compaction-model"
+                                    value="${escapeHtml(currentModel)}"
+                                    placeholder="Leave empty to use conversation model"
+                                    ${modelDisabledAttr}>
+                                ${modelLockNote}
+                                <div class="form-text">The model used for generating compaction summaries.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="compaction-threshold" class="form-label">Compaction Threshold</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="compaction-threshold"
+                                        min="5" max="95" step="5" value="${threshold}">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="form-text">Trigger compaction when context reaches this % of the window.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="compaction-ratio" class="form-label">Summary Ratio</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="compaction-ratio"
+                                        min="5" max="90" step="5" value="${ratio}">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                                <div class="form-text">Target size for compacted summaries as % of original.</div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="saveCompactionSettings()">
+                                <i class="bi bi-check-lg"></i> Save
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Remove old modal if exists
+        const oldModal = document.getElementById('compactionModal');
+        if (oldModal) oldModal.remove();
+
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        const modal = new bootstrap.Modal(document.getElementById('compactionModal'));
+        modal.show();
+    } catch (error) {
+        console.error('Error loading compaction settings:', error);
+        showToast('Failed to load compaction settings', 'error');
+    }
+}
+
+async function saveCompactionSettings() {
+    const modelInput = document.getElementById('compaction-model');
+    const thresholdInput = document.getElementById('compaction-threshold');
+    const ratioInput = document.getElementById('compaction-ratio');
+
+    const model = modelInput.value.trim();
+    const threshold = parseFloat(thresholdInput.value) / 100;
+    const ratio = parseFloat(ratioInput.value) / 100;
+
+    let errors = [];
+
+    // Save threshold
+    try {
+        const thresholdFormData = new FormData();
+        thresholdFormData.append('threshold', threshold.toString());
+        const thresholdResponse = await fetch(`/api/chat/${conversationId}/command/compaction-threshold`, {
+            method: 'POST',
+            body: thresholdFormData
+        });
+        const thresholdData = await thresholdResponse.json();
+        if (thresholdData.status !== 'success') {
+            errors.push(thresholdData.message || 'Failed to save threshold');
+        }
+    } catch (error) {
+        errors.push('Failed to save threshold');
+    }
+
+    // Save ratio
+    try {
+        const ratioFormData = new FormData();
+        ratioFormData.append('ratio', ratio.toString());
+        const ratioResponse = await fetch(`/api/chat/${conversationId}/command/compaction-ratio`, {
+            method: 'POST',
+            body: ratioFormData
+        });
+        const ratioData = await ratioResponse.json();
+        if (ratioData.status !== 'success') {
+            errors.push(ratioData.message || 'Failed to save ratio');
+        }
+    } catch (error) {
+        errors.push('Failed to save ratio');
+    }
+
+    // Save model if not locked and has value
+    if (!modelInput.disabled && model) {
+        try {
+            const modelFormData = new FormData();
+            modelFormData.append('model_id', model);
+            const modelResponse = await fetch(`/api/chat/${conversationId}/command/compaction-model`, {
+                method: 'POST',
+                body: modelFormData
+            });
+            const modelData = await modelResponse.json();
+            if (modelData.status !== 'success') {
+                errors.push(modelData.message || 'Failed to save model');
+            }
+        } catch (error) {
+            errors.push('Failed to save model');
+        }
+    }
+
+    // Close modal and show result
+    bootstrap.Modal.getInstance(document.getElementById('compactionModal')).hide();
+
+    if (errors.length === 0) {
+        showToast('Compaction settings saved successfully', 'success');
+    } else {
+        showToast(errors.join('; '), 'error');
     }
 }
 

@@ -95,6 +95,18 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                 appendToolResult(data.tool_name, { error: data.error });
             });
 
+            eventSource.addEventListener('web_search_start', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Web search starting:', data);
+                appendWebSearchStart(data.tool_use_id, data.input);
+            });
+
+            eventSource.addEventListener('web_search_results', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Web search results:', data);
+                appendWebSearchResults(data.tool_use_id, data.sources, data.source_count);
+            });
+
             eventSource.addEventListener('permission_request', (event) => {
                 const data = JSON.parse(event.data);
                 console.log('Permission request received:', data);
@@ -135,8 +147,9 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                     typingIndicator = null;
                 }
 
-                // Show error message
-                appendMessage('system', `Error: ${data.message}`);
+                // Format detailed error message
+                const errorContent = formatErrorMessage(data);
+                appendMessage('error', errorContent);
 
                 eventSource.close();
                 resolve();
@@ -154,7 +167,12 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
 
                 // If we haven't received any content, show error
                 if (!streamingMessageElement) {
-                    appendMessage('system', 'Connection error. Please try again.');
+                    const errorContent = formatErrorMessage({
+                        message: 'Connection lost to the server',
+                        error_type: 'ConnectionError',
+                        suggestion: 'Check your network connection and try again.'
+                    });
+                    appendMessage('error', errorContent);
                 }
 
                 eventSource.close();
@@ -251,3 +269,48 @@ async function streamProgress(taskName, totalSteps, onProgress) {
         console.error('Error streaming progress:', error);
     }
 }
+
+/**
+ * Format an error message with details and suggestion
+ * @param {Object} data - Error data from SSE event
+ * @returns {string} Formatted HTML for error display
+ */
+function formatErrorMessage(data) {
+    const message = data.message || 'An unknown error occurred';
+    const errorType = data.error_type || '';
+    const errorCode = data.error_code || '';
+    const suggestion = data.suggestion || '';
+    const retries = data.retries_attempted || 0;
+
+    let html = `<div class="error-details">`;
+
+    // Main error message
+    html += `<strong>${escapeHtml(message)}</strong>`;
+
+    // Error type/code if available
+    if (errorType && errorType !== 'Unknown') {
+        html += `<div class="mt-2 small text-muted">`;
+        if (errorCode && errorCode !== errorType) {
+            html += `Error: ${escapeHtml(errorType)} (${escapeHtml(errorCode)})`;
+        } else {
+            html += `Error: ${escapeHtml(errorType)}`;
+        }
+        if (retries > 0) {
+            html += ` &mdash; Failed after ${retries} retry attempt(s)`;
+        }
+        html += `</div>`;
+    }
+
+    html += `</div>`;
+
+    // Suggestion if available
+    if (suggestion) {
+        html += `<div class="error-suggestion">`;
+        html += `<i class="bi bi-lightbulb"></i>`;
+        html += `<span>${escapeHtml(suggestion)}</span>`;
+        html += `</div>`;
+    }
+
+    return html;
+}
+

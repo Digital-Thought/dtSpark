@@ -179,6 +179,37 @@ class StreamingManager:
                                                 "input": block.get('input', {}),
                                             }),
                                         }
+                                    elif block.get('type') == 'server_tool_use':
+                                        # Emit web search start event
+                                        yield {
+                                            "event": "web_search_start",
+                                            "data": json.dumps({
+                                                "tool_name": block.get('name', 'web_search'),
+                                                "tool_use_id": block.get('id'),
+                                                "input": block.get('input', {}),
+                                            }),
+                                        }
+                                    elif block.get('type') == 'web_search_tool_result':
+                                        # Emit web search results event
+                                        content = block.get('content', [])
+                                        # Extract source information from results
+                                        sources = []
+                                        if isinstance(content, list):
+                                            for result in content:
+                                                if isinstance(result, dict) and result.get('type') == 'web_search_result':
+                                                    sources.append({
+                                                        'url': result.get('url', ''),
+                                                        'title': result.get('title', ''),
+                                                        'page_age': result.get('page_age', ''),
+                                                    })
+                                        yield {
+                                            "event": "web_search_results",
+                                            "data": json.dumps({
+                                                "tool_use_id": block.get('tool_use_id'),
+                                                "sources": sources,
+                                                "source_count": len(sources),
+                                            }),
+                                        }
                         except ValueError:
                             pass
 
@@ -187,37 +218,110 @@ class StreamingManager:
                 # Small delay before next poll
                 await asyncio.sleep(0.2)
 
-            # Thread finished, check result
+            # Thread finished - do one final poll to catch any messages we missed
+            try:
+                final_messages = database.get_conversation_messages(conversation_id)
+                for msg in final_messages[last_message_count:]:
+                    msg_id = msg['id']
+                    if msg_id in emitted_messages:
+                        continue
+
+                    emitted_messages.add(msg_id)
+                    role = msg['role']
+                    content = msg['content']
+
+                    # Check for web search blocks in assistant messages
+                    if role == 'assistant' and content.strip().startswith('['):
+                        try:
+                            blocks = json.loads(content)
+                            if isinstance(blocks, list):
+                                for block in blocks:
+                                    if block.get('type') == 'text' and block.get('text'):
+                                        # Skip text blocks here - they'll be in the final response
+                                        pass
+                                    elif block.get('type') == 'server_tool_use':
+                                        yield {
+                                            "event": "web_search_start",
+                                            "data": json.dumps({
+                                                "tool_name": block.get('name', 'web_search'),
+                                                "tool_use_id": block.get('id'),
+                                                "input": block.get('input', {}),
+                                            }),
+                                        }
+                                    elif block.get('type') == 'web_search_tool_result':
+                                        content_list = block.get('content', [])
+                                        sources = []
+                                        if isinstance(content_list, list):
+                                            for result in content_list:
+                                                if isinstance(result, dict) and result.get('type') == 'web_search_result':
+                                                    sources.append({
+                                                        'url': result.get('url', ''),
+                                                        'title': result.get('title', ''),
+                                                        'page_age': result.get('page_age', ''),
+                                                    })
+                                        yield {
+                                            "event": "web_search_results",
+                                            "data": json.dumps({
+                                                "tool_use_id": block.get('tool_use_id'),
+                                                "sources": sources,
+                                                "source_count": len(sources),
+                                            }),
+                                        }
+                        except (ValueError, TypeError):
+                            pass
+            except Exception as e:
+                logger.warning(f"Final poll failed: {e}")
+
+            # Check result
             if result_container['error']:
                 yield {
                     "event": "error",
                     "data": json.dumps({
                         "message": result_container['error'],
+                        "error_type": "Exception",
+                        "suggestion": "Check the application logs for more details.",
                     }),
                 }
             elif result_container['response']:
-                # Emit final response
-                yield {
-                    "event": "response",
-                    "data": json.dumps({
-                        "type": "text",
-                        "content": result_container['response'],
-                        "final": True,
-                    }),
-                }
+                response = result_container['response']
 
-                # Send completion event
-                yield {
-                    "event": "complete",
-                    "data": json.dumps({
-                        "status": "success",
-                    }),
-                }
+                # Check if response is a structured error (dict with _error flag)
+                if isinstance(response, dict) and response.get('_error'):
+                    yield {
+                        "event": "error",
+                        "data": json.dumps({
+                            "message": response.get('error_message', 'An error occurred'),
+                            "error_type": response.get('error_type', 'Unknown'),
+                            "error_code": response.get('error_code', 'Unknown'),
+                            "suggestion": response.get('suggestion', ''),
+                            "retries_attempted": response.get('retries_attempted', 0),
+                        }),
+                    }
+                else:
+                    # Emit final response
+                    yield {
+                        "event": "response",
+                        "data": json.dumps({
+                            "type": "text",
+                            "content": response,
+                            "final": True,
+                        }),
+                    }
+
+                    # Send completion event
+                    yield {
+                        "event": "complete",
+                        "data": json.dumps({
+                            "status": "success",
+                        }),
+                    }
             else:
                 yield {
                     "event": "error",
                     "data": json.dumps({
-                        "message": "Failed to get response from model",
+                        "message": "No response received from the model",
+                        "error_type": "NoResponse",
+                        "suggestion": "The model did not respond. Try again or check your connection.",
                     }),
                 }
 

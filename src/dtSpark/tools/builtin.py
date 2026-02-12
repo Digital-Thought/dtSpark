@@ -1624,6 +1624,9 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
     try:
         from docx import Document
 
+        # Track which placeholders were actually replaced
+        actually_replaced = set()
+
         # Use template if provided
         if template_path:
             # Validate template path
@@ -1642,18 +1645,47 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
 
             # Replace placeholders in paragraphs
             for para in doc.paragraphs:
+                full_text = para.text
+                modified = False
                 for key, value in placeholders.items():
-                    if f"{{{{{key}}}}}" in para.text:
-                        for run in para.runs:
-                            run.text = run.text.replace(f"{{{{{key}}}}}", str(value))
+                    # Support both raw keys and keys with delimiters
+                    # If key already has delimiters (e.g., <KEY> or {{KEY}}), use as-is
+                    # Otherwise, the key is used as-is (user must include delimiters)
+                    if key in full_text:
+                        full_text = full_text.replace(key, str(value))
+                        actually_replaced.add(key)
+                        modified = True
+
+                # If text was modified, update the paragraph
+                # Clear all runs and set new text (preserves paragraph formatting)
+                if modified:
+                    for run in para.runs:
+                        run.text = ""
+                    if para.runs:
+                        para.runs[0].text = full_text
+                    else:
+                        para.add_run(full_text)
 
             # Replace placeholders in tables
             for table in doc.tables:
                 for row in table.rows:
                     for cell in row.cells:
-                        for key, value in placeholders.items():
-                            if f"{{{{{key}}}}}" in cell.text:
-                                cell.text = cell.text.replace(f"{{{{{key}}}}}", str(value))
+                        for paragraph in cell.paragraphs:
+                            full_text = paragraph.text
+                            modified = False
+                            for key, value in placeholders.items():
+                                if key in full_text:
+                                    full_text = full_text.replace(key, str(value))
+                                    actually_replaced.add(key)
+                                    modified = True
+
+                            if modified:
+                                for run in paragraph.runs:
+                                    run.text = ""
+                                if paragraph.runs:
+                                    paragraph.runs[0].text = full_text
+                                else:
+                                    paragraph.add_run(full_text)
 
         else:
             doc = Document()
@@ -1692,13 +1724,25 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
 
         doc.save(str(full_path))
 
+        # Determine which placeholders were replaced (for template mode)
+        if template_path and placeholders:
+            replaced_list = list(actually_replaced)
+            not_found = [k for k in placeholders.keys() if k not in actually_replaced]
+        else:
+            replaced_list = []
+            not_found = []
+
         result = {
             "path": file_path,
             "full_path": str(full_path),
             "size_bytes": full_path.stat().st_size,
             "used_template": template_path is not None,
-            "placeholders_replaced": list(placeholders.keys()) if placeholders else []
+            "placeholders_replaced": replaced_list,
+            "placeholders_not_found": not_found
         }
+
+        if not_found:
+            logging.warning(f"Word document created but placeholders not found in template: {not_found}")
 
         logging.info(f"Created Word document: {file_path}")
         return {"success": True, "result": result}

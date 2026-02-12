@@ -113,7 +113,8 @@ def get_conversation(conn: sqlite3.Connection, conversation_id: int, user_guid: 
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, name, model_id, created_at, last_updated, total_tokens, instructions,
-               tokens_sent, tokens_received, max_tokens, compaction_threshold, web_search_enabled
+               tokens_sent, tokens_received, max_tokens, compaction_threshold, web_search_enabled,
+               compaction_model, compaction_summary_ratio
         FROM conversations
         WHERE id = ? AND user_guid = ?
     ''', (conversation_id, user_guid))
@@ -132,6 +133,8 @@ def get_conversation(conn: sqlite3.Connection, conversation_id: int, user_guid: 
             'tokens_received': row['tokens_received'] or 0,
             'max_tokens': row['max_tokens'],  # NULL means use global default
             'compaction_threshold': row['compaction_threshold'],  # NULL means use global default
+            'compaction_model': row['compaction_model'],  # NULL means use conversation or global model
+            'compaction_summary_ratio': row['compaction_summary_ratio'],  # NULL means use global default
             'web_search_enabled': bool(row['web_search_enabled'])  # Convert 0/1 to bool
         }
     return None
@@ -290,6 +293,67 @@ def update_conversation_compaction_threshold(conn: sqlite3.Connection, conversat
     except Exception as e:
         logging.error(f"Failed to update compaction_threshold: {e}")
         conn.rollback()
+
+
+def update_conversation_compaction_settings(conn: sqlite3.Connection, conversation_id: int,
+                                             compaction_model: Optional[str] = None,
+                                             compaction_threshold: Optional[float] = None,
+                                             compaction_summary_ratio: Optional[float] = None,
+                                             user_guid: str = None) -> bool:
+    """
+    Update compaction settings for a specific conversation.
+
+    Args:
+        conn: Database connection
+        conversation_id: ID of the conversation
+        compaction_model: Model to use for compaction (NULL uses conversation or global model)
+        compaction_threshold: Compaction threshold (0.0-1.0)
+        compaction_summary_ratio: Summary ratio for compaction (0.0-1.0)
+        user_guid: User GUID for multi-user support
+
+    Returns:
+        True if update was successful, False otherwise
+    """
+    try:
+        updates = []
+        params = []
+
+        if compaction_model is not None:
+            updates.append("compaction_model = ?")
+            params.append(compaction_model)
+        if compaction_threshold is not None:
+            updates.append("compaction_threshold = ?")
+            params.append(compaction_threshold)
+        if compaction_summary_ratio is not None:
+            updates.append("compaction_summary_ratio = ?")
+            params.append(compaction_summary_ratio)
+
+        if not updates:
+            return False
+
+        params.extend([conversation_id, user_guid])
+        cursor = conn.cursor()
+        cursor.execute(
+            f"UPDATE conversations SET {', '.join(updates)} WHERE id = ? AND user_guid = ?",
+            params
+        )
+        conn.commit()
+
+        updated_fields = []
+        if compaction_model is not None:
+            updated_fields.append(f"model={compaction_model}")
+        if compaction_threshold is not None:
+            updated_fields.append(f"threshold={compaction_threshold}")
+        if compaction_summary_ratio is not None:
+            updated_fields.append(f"ratio={compaction_summary_ratio}")
+
+        logging.info(f"Updated compaction settings for conversation {conversation_id}: {', '.join(updated_fields)}")
+        return cursor.rowcount > 0
+
+    except Exception as e:
+        logging.error(f"Failed to update compaction settings: {e}")
+        conn.rollback()
+        return False
 
 
 def update_conversation_web_search(conn: sqlite3.Connection, conversation_id: int,

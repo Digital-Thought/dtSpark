@@ -223,8 +223,9 @@ async def command_info(
             compaction_trigger_tokens = int(context_window * compaction_threshold)
             emergency_trigger_tokens = int(context_window * emergency_threshold)
 
-            # Get current token count
-            current_tokens = conv.get('tokens_sent', 0) + conv.get('tokens_received', 0)
+            # Get current context token count (sum of active message tokens, not API usage)
+            # Note: total_tokens tracks actual context size, while tokens_sent/received track API billing
+            current_tokens = conv.get('total_tokens', 0)
             context_usage_percent = (current_tokens / context_window * 100) if context_window > 0 else 0
 
             rollup_info = {
@@ -777,4 +778,196 @@ async def respond_to_permission_request(
         raise
     except Exception as e:
         logger.error(f"Error submitting permission response: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/chat/{conversation_id}/command/compaction")
+async def get_compaction_settings(
+    request: Request,
+    conversation_id: int,
+    session_id: str = Depends(get_current_session),
+):
+    """
+    Get current compaction settings for a conversation.
+
+    Args:
+        request: FastAPI request
+        conversation_id: ID of the conversation
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse with compaction settings
+    """
+    try:
+        app_instance = request.app.state.app_instance
+        conversation_manager = app_instance.conversation_manager
+
+        # Load conversation if needed
+        if conversation_manager.current_conversation_id != conversation_id:
+            conversation_manager.load_conversation(conversation_id)
+
+        settings = conversation_manager.get_compaction_settings()
+
+        return CommandResponse(
+            command="compaction",
+            status="success",
+            message="Compaction settings retrieved",
+            data=settings,
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting compaction settings for conversation {conversation_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/{conversation_id}/command/compaction-model")
+async def set_compaction_model(
+    request: Request,
+    conversation_id: int,
+    model_id: str = Form(...),
+    session_id: str = Depends(get_current_session),
+):
+    """
+    Set the compaction model for a conversation.
+
+    Args:
+        request: FastAPI request
+        conversation_id: ID of the conversation
+        model_id: Model ID to use for compaction
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse with status
+    """
+    try:
+        app_instance = request.app.state.app_instance
+        conversation_manager = app_instance.conversation_manager
+
+        # Load conversation if needed
+        if conversation_manager.current_conversation_id != conversation_id:
+            conversation_manager.load_conversation(conversation_id)
+
+        success, message = conversation_manager.set_compaction_model(model_id)
+
+        return CommandResponse(
+            command="compaction-model",
+            status="success" if success else "error",
+            message=message,
+            data={"model_id": model_id} if success else None,
+        )
+
+    except Exception as e:
+        logger.error(f"Error setting compaction model for conversation {conversation_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/{conversation_id}/command/compaction-threshold")
+async def set_compaction_threshold(
+    request: Request,
+    conversation_id: int,
+    threshold: str = Form(...),
+    session_id: str = Depends(get_current_session),
+):
+    """
+    Set the compaction threshold for a conversation.
+
+    Args:
+        request: FastAPI request
+        conversation_id: ID of the conversation
+        threshold: Threshold value (e.g., "0.30" or "30%")
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse with status
+    """
+    try:
+        app_instance = request.app.state.app_instance
+        conversation_manager = app_instance.conversation_manager
+
+        # Load conversation if needed
+        if conversation_manager.current_conversation_id != conversation_id:
+            conversation_manager.load_conversation(conversation_id)
+
+        # Parse threshold value (accept percentage or decimal)
+        threshold_str = threshold.strip()
+        try:
+            if threshold_str.endswith('%'):
+                threshold_value = float(threshold_str[:-1]) / 100
+            else:
+                threshold_value = float(threshold_str)
+        except ValueError:
+            return CommandResponse(
+                command="compaction-threshold",
+                status="error",
+                message="Invalid threshold. Use decimal (0.30) or percentage (30%)",
+                data=None,
+            )
+
+        success, message = conversation_manager.set_compaction_threshold(threshold_value)
+
+        return CommandResponse(
+            command="compaction-threshold",
+            status="success" if success else "error",
+            message=message,
+            data={"threshold": threshold_value} if success else None,
+        )
+
+    except Exception as e:
+        logger.error(f"Error setting compaction threshold for conversation {conversation_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/{conversation_id}/command/compaction-ratio")
+async def set_compaction_ratio(
+    request: Request,
+    conversation_id: int,
+    ratio: str = Form(...),
+    session_id: str = Depends(get_current_session),
+):
+    """
+    Set the compaction summary ratio for a conversation.
+
+    Args:
+        request: FastAPI request
+        conversation_id: ID of the conversation
+        ratio: Ratio value (e.g., "0.25" or "25%")
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse with status
+    """
+    try:
+        app_instance = request.app.state.app_instance
+        conversation_manager = app_instance.conversation_manager
+
+        # Load conversation if needed
+        if conversation_manager.current_conversation_id != conversation_id:
+            conversation_manager.load_conversation(conversation_id)
+
+        # Parse ratio value (accept percentage or decimal)
+        ratio_str = ratio.strip()
+        try:
+            if ratio_str.endswith('%'):
+                ratio_value = float(ratio_str[:-1]) / 100
+            else:
+                ratio_value = float(ratio_str)
+        except ValueError:
+            return CommandResponse(
+                command="compaction-ratio",
+                status="error",
+                message="Invalid ratio. Use decimal (0.25) or percentage (25%)",
+                data=None,
+            )
+
+        success, message = conversation_manager.set_compaction_summary_ratio(ratio_value)
+
+        return CommandResponse(
+            command="compaction-ratio",
+            status="success" if success else "error",
+            message=message,
+            data={"ratio": ratio_value} if success else None,
+        )
+
+    except Exception as e:
+        logger.error(f"Error setting compaction ratio for conversation {conversation_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
