@@ -730,6 +730,57 @@ async def delete_files(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/chat/security/respond")
+async def respond_to_security_request(
+    request: Request,
+    request_id: str = Form(...),
+    confirmed: bool = Form(...),
+    session_id: str = Depends(get_current_session)
+):
+    """
+    Submit a response to a security confirmation request.
+
+    Args:
+        request: FastAPI request
+        request_id: The security request ID
+        confirmed: True if user confirms to proceed, False to cancel
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse with status
+    """
+    try:
+        app_instance = request.app.state.app_instance
+
+        # Check if web interface is available
+        if not hasattr(app_instance.conversation_manager, 'web_interface') or not app_instance.conversation_manager.web_interface:
+            raise HTTPException(status_code=400, detail="Web interface not initialized")
+
+        # Submit the response
+        success = app_instance.conversation_manager.web_interface.submit_security_response(
+            request_id, confirmed
+        )
+
+        if not success:
+            raise HTTPException(status_code=404, detail="Security request not found")
+
+        return CommandResponse(
+            command="security_response",
+            status="success",
+            message=f"Security response submitted: {'confirmed' if confirmed else 'denied'}",
+            data={
+                "request_id": request_id,
+                "confirmed": confirmed,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error submitting security response: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/chat/permission/respond")
 async def respond_to_permission_request(
     request: Request,

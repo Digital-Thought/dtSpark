@@ -1730,14 +1730,33 @@ Current date and time: {datetime_str}"""
 
             if inspection_result.blocked:
                 # Log violation and notify user
-                if self.cli_interface:
+                if hasattr(self, 'web_interface') and self.web_interface:
+                    # Return structured error for web UI
+                    logging.warning(f"Prompt blocked: {inspection_result.explanation}")
+                    return {
+                        '_error': True,
+                        '_security_blocked': True,
+                        'error_type': 'SecurityViolation',
+                        'error_code': 'PROMPT_BLOCKED',
+                        'error_message': inspection_result.explanation or 'This prompt has been blocked for security reasons.',
+                        'suggestion': 'Please rephrase your request without potentially harmful content.',
+                        'severity': getattr(inspection_result, 'severity', 'critical'),
+                        'issues': getattr(inspection_result, 'issues', []),
+                    }
+                elif self.cli_interface:
                     self.cli_interface.display_prompt_violation(inspection_result)
                 logging.warning(f"Prompt blocked: {inspection_result.explanation}")
                 return None
 
             elif inspection_result.needs_confirmation:
                 # Show warning and ask for confirmation
-                if self.cli_interface:
+                if hasattr(self, 'web_interface') and self.web_interface:
+                    # Use web interface for confirmation
+                    confirmed = self.web_interface.prompt_security_confirmation(inspection_result)
+                    if not confirmed:
+                        logging.info("User declined to send risky prompt via web UI")
+                        return None
+                elif self.cli_interface:
                     confirmed = self.cli_interface.confirm_risky_prompt(inspection_result)
                     if not confirmed:
                         logging.info("User declined to send risky prompt")

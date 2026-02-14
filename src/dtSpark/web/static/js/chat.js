@@ -827,6 +827,124 @@ async function showToolPermissionDialog(requestId, toolName, toolDescription) {
 }
 
 /**
+ * Show security warning dialog and handle user response
+ * @param {string} requestId - The security request ID
+ * @param {string} severity - Severity level ('warning', 'critical', etc.)
+ * @param {Array} issues - List of security issues detected
+ * @param {string} explanation - Explanation of the security concern
+ * @param {Array} patterns - Matched security patterns
+ */
+async function showSecurityWarningDialog(requestId, severity, issues, explanation, patterns) {
+    // Build issues list HTML
+    let issuesHtml = '';
+    if (issues && issues.length > 0) {
+        issuesHtml = '<ul class="mb-3">';
+        issues.forEach(issue => {
+            issuesHtml += `<li>${escapeHtml(issue)}</li>`;
+        });
+        issuesHtml += '</ul>';
+    }
+
+    // Build patterns list HTML
+    let patternsHtml = '';
+    if (patterns && patterns.length > 0) {
+        patternsHtml = '<div class="mb-3"><strong>Detected patterns:</strong><ul class="mb-0">';
+        patterns.forEach(pattern => {
+            patternsHtml += `<li><code>${escapeHtml(pattern)}</code></li>`;
+        });
+        patternsHtml += '</ul></div>';
+    }
+
+    // Determine header colour based on severity
+    const headerClass = severity === 'critical' ? 'bg-danger text-white' : 'bg-warning text-dark';
+    const iconClass = severity === 'critical' ? 'bi-shield-exclamation' : 'bi-exclamation-triangle-fill';
+
+    // Create modal HTML
+    const modalHtml = `
+        <div class="modal fade" id="securityWarningModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header ${headerClass}">
+                        <h5 class="modal-title">
+                            <i class="bi ${iconClass}"></i> Security Warning
+                        </h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-${severity === 'critical' ? 'danger' : 'warning'} mb-3">
+                            <strong>Potential security concern detected in your message.</strong>
+                        </div>
+                        ${explanation ? `<p class="mb-3">${escapeHtml(explanation)}</p>` : ''}
+                        ${issuesHtml}
+                        ${patternsHtml}
+                        <p class="mb-2"><strong>How would you like to proceed?</strong></p>
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-warning security-btn" data-confirmed="true">
+                                <i class="bi bi-exclamation-triangle"></i> Proceed anyway - I understand the risks
+                            </button>
+                            <button type="button" class="btn btn-secondary security-btn" data-confirmed="false">
+                                <i class="bi bi-x-circle"></i> Cancel - Do not proceed
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Remove existing modal if present
+    const existingModal = document.getElementById('securityWarningModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    // Add modal to DOM
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Get modal element
+    const modalElement = document.getElementById('securityWarningModal');
+    const modal = new bootstrap.Modal(modalElement);
+
+    // Add click handlers to buttons
+    const buttons = modalElement.querySelectorAll('.security-btn');
+    buttons.forEach(button => {
+        button.addEventListener('click', async () => {
+            const confirmed = button.dataset.confirmed === 'true';
+
+            // Send response to server
+            try {
+                const formData = new FormData();
+                formData.append('request_id', requestId);
+                formData.append('confirmed', confirmed);
+
+                const result = await fetch('/api/chat/security/respond', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!result.ok) {
+                    console.error('Failed to submit security response:', result.statusText);
+                    showToast('Failed to submit security response', 'error');
+                }
+            } catch (error) {
+                console.error('Error submitting security response:', error);
+                showToast('Error submitting security response', 'error');
+            }
+
+            // Close modal
+            modal.hide();
+        });
+    });
+
+    // Clean up modal after it's hidden
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        modalElement.remove();
+    });
+
+    // Show modal
+    modal.show();
+}
+
+/**
  * Copy message content to clipboard
  * @param {string} content - The message content to copy
  * @param {HTMLElement} button - The copy button element

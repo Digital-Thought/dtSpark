@@ -100,6 +100,7 @@ class StreamingManager:
             # Poll for new messages while thread is running
             emitted_messages = set()  # Track which message IDs we've already emitted
             emitted_permission_requests = set()  # Track which permission requests we've already emitted
+            emitted_security_requests = set()  # Track which security requests we've already emitted
 
             while not result_container['done']:
                 # Check for pending permission requests (if web interface is available)
@@ -115,6 +116,24 @@ class StreamingManager:
                                     "request_id": request_id,
                                     "tool_name": pending_request['tool_name'],
                                     "tool_description": pending_request.get('tool_description'),
+                                }),
+                            }
+
+                    # Check for pending security confirmation requests
+                    security_request = conversation_manager.web_interface.get_pending_security_request()
+                    if security_request:
+                        request_id = security_request['request_id']
+                        if request_id not in emitted_security_requests:
+                            emitted_security_requests.add(request_id)
+                            yield {
+                                "event": "security_confirmation",
+                                "data": json.dumps({
+                                    "request_id": request_id,
+                                    "severity": security_request.get('severity', 'warning'),
+                                    "issues": security_request.get('issues', []),
+                                    "explanation": security_request.get('explanation', ''),
+                                    "patterns": security_request.get('patterns', []),
+                                    "detection_method": security_request.get('detection_method', 'unknown'),
                                 }),
                             }
 

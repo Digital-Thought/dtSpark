@@ -981,12 +981,17 @@ async function clearInstructions() {
 // Show compaction settings modal
 async function showCompactionSettingsModal() {
     try {
-        // Load current compaction settings
-        const response = await fetch(`/api/chat/${conversationId}/command/compaction`, {
-            method: 'GET'
-        });
-        const data = await response.json();
-        const settings = data.data;
+        // Load current compaction settings and available models in parallel
+        const [settingsResponse, modelsResponse] = await Promise.all([
+            fetch(`/api/chat/${conversationId}/command/compaction`, { method: 'GET' }),
+            fetch('/api/models')
+        ]);
+
+        const settingsData = await settingsResponse.json();
+        const modelsData = await modelsResponse.json();
+
+        const settings = settingsData.data;
+        const models = modelsData.models || modelsData;
 
         const modelLocked = settings.model_locked;
         const lockedModel = settings.locked_model;
@@ -999,6 +1004,19 @@ async function showCompactionSettingsModal() {
             ? `<div class="text-muted small mt-1"><i class="bi bi-lock"></i> Model locked to: <code>${escapeHtml(lockedModel)}</code></div>`
             : '';
 
+        // Build model options HTML
+        let modelOptionsHtml = '<option value="">Use conversation model</option>';
+        models.forEach(model => {
+            const selected = model.id === currentModel ? 'selected' : '';
+            let displayText = model.name;
+            if (model.model_maker && model.provider !== model.model_maker) {
+                displayText += ` [${model.model_maker} via ${model.provider}]`;
+            } else if (model.provider) {
+                displayText += ` [${model.provider}]`;
+            }
+            modelOptionsHtml += `<option value="${escapeHtml(model.id)}" ${selected}>${escapeHtml(displayText)}</option>`;
+        });
+
         const modalHTML = `
             <div class="modal fade" id="compactionModal" tabindex="-1">
                 <div class="modal-dialog">
@@ -1010,10 +1028,9 @@ async function showCompactionSettingsModal() {
                         <div class="modal-body">
                             <div class="mb-3">
                                 <label for="compaction-model" class="form-label">Compaction Model</label>
-                                <input type="text" class="form-control" id="compaction-model"
-                                    value="${escapeHtml(currentModel)}"
-                                    placeholder="Leave empty to use conversation model"
-                                    ${modelDisabledAttr}>
+                                <select class="form-select" id="compaction-model" ${modelDisabledAttr}>
+                                    ${modelOptionsHtml}
+                                </select>
                                 ${modelLockNote}
                                 <div class="form-text">The model used for generating compaction summaries.</div>
                             </div>

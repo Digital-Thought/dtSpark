@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a21] - 2026-02-14
+
+### Added
+- **Security Warning Modal in Web UI** - Prompt inspection security warnings now display as modal dialogs
+  - When security concerns are detected in user input, a modal dialog appears instead of CLI prompts
+  - Users can choose to proceed or cancel directly in the web interface
+  - Displays severity level, detected issues, explanation, and matched patterns
+  - Styled with appropriate warning/danger colours based on severity
+
+### Changed
+- **Compaction Settings Model Dropdown** - Model selection now uses a dropdown instead of text input
+  - Fetches available models from API and displays them in a select dropdown
+  - Shows model provider information similar to new conversation dialog
+  - "Use conversation model" option for default behaviour
+  - Model dropdown is disabled when compaction model is locked via configuration
+
+---
+
 ## [1.1.0a20] - 2026-02-13
 
 ### Fixed

@@ -29,6 +29,10 @@ class WebInterface:
         self._permission_requests = {}  # request_id -> request_data
         self._permission_responses = {}  # request_id -> response
         self._pending_request_id = None
+        # Security prompt confirmation
+        self._security_requests = {}  # request_id -> request_data
+        self._security_responses = {}  # request_id -> response (True/False)
+        self._pending_security_request_id = None
 
     def prompt_tool_permission(self, tool_name: str, tool_description: str = None) -> Optional[str]:
         """
@@ -134,4 +138,97 @@ class WebInterface:
         self._permission_requests[request_id]['status'] = 'responded'
 
         logger.info("Permission response submitted and recorded")
+        return True
+
+    def prompt_security_confirmation(self, inspection_result) -> bool:
+        """
+        Request security confirmation from web user for a risky prompt.
+
+        Args:
+            inspection_result: The PromptInspectionResult object with details
+
+        Returns:
+            True if user confirms to proceed, False otherwise
+        """
+        # Generate unique request ID
+        request_id = str(uuid.uuid4())
+
+        # Extract details from inspection result
+        self._security_requests[request_id] = {
+            'severity': getattr(inspection_result, 'severity', 'warning'),
+            'issues': getattr(inspection_result, 'issues', []),
+            'explanation': getattr(inspection_result, 'explanation', ''),
+            'patterns': getattr(inspection_result, 'matched_patterns', []),
+            'detection_method': getattr(inspection_result, 'detection_method', 'unknown'),
+            'status': 'pending'
+        }
+
+        self._pending_security_request_id = request_id
+
+        logger.info(f"Web security confirmation request created: {request_id}")
+
+        # Wait for response (with timeout)
+        import time
+        timeout_seconds = 300  # 5 minutes timeout
+        poll_interval = 0.5
+        elapsed = 0
+
+        while elapsed < timeout_seconds:
+            if request_id in self._security_responses:
+                response = self._security_responses[request_id]
+
+                # Clean up
+                del self._security_requests[request_id]
+                del self._security_responses[request_id]
+                if self._pending_security_request_id == request_id:
+                    self._pending_security_request_id = None
+
+                logger.info(f"Web security response received for {request_id}: {response}")
+                return response
+
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+        # Timeout - default to deny for security
+        logger.warning(f"Web security request {request_id} timed out - denying by default")
+        if request_id in self._security_requests:
+            del self._security_requests[request_id]
+        if self._pending_security_request_id == request_id:
+            self._pending_security_request_id = None
+
+        return False
+
+    def get_pending_security_request(self) -> Optional[Dict]:
+        """
+        Get the current pending security confirmation request if any.
+
+        Returns:
+            Dictionary with request details, or None
+        """
+        if self._pending_security_request_id and self._pending_security_request_id in self._security_requests:
+            return {
+                'request_id': self._pending_security_request_id,
+                **self._security_requests[self._pending_security_request_id]
+            }
+        return None
+
+    def submit_security_response(self, request_id: str, confirmed: bool) -> bool:
+        """
+        Submit a response to a pending security confirmation request.
+
+        Args:
+            request_id: The request ID
+            confirmed: True if user confirms to proceed, False to cancel
+
+        Returns:
+            True if response was accepted, False if request not found
+        """
+        if request_id not in self._security_requests:
+            logger.warning("Security response submitted for unknown request")
+            return False
+
+        self._security_responses[request_id] = confirmed
+        self._security_requests[request_id]['status'] = 'responded'
+
+        logger.info(f"Security response submitted: confirmed={confirmed}")
         return True
