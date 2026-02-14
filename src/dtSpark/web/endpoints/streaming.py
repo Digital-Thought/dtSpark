@@ -137,6 +137,21 @@ class StreamingManager:
                                 }),
                             }
 
+                    # Check for compaction status updates
+                    compaction_status = conversation_manager.web_interface.get_compaction_status()
+                    if compaction_status:
+                        yield {
+                            "event": "compaction_status",
+                            "data": json.dumps({
+                                "status": compaction_status.get('status'),
+                                "message": compaction_status.get('message'),
+                                "original_tokens": compaction_status.get('original_tokens'),
+                                "compacted_tokens": compaction_status.get('compacted_tokens'),
+                                "reduction_pct": compaction_status.get('reduction_pct'),
+                                "elapsed_time": compaction_status.get('elapsed_time'),
+                            }),
+                        }
+
                 # Check for new messages
                 try:
                     current_messages = database.get_conversation_messages(conversation_id)

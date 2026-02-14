@@ -110,6 +110,10 @@ class WebServer:
         if hasattr(app_instance, 'conversation_manager') and app_instance.conversation_manager:
             app_instance.conversation_manager.web_interface = self.web_interface
             logger.info("Web interface set on conversation manager for tool permission prompts")
+            # Also set on context_compactor for compaction status updates
+            if hasattr(app_instance.conversation_manager, 'context_compactor'):
+                app_instance.conversation_manager.context_compactor.web_interface = self.web_interface
+                logger.info("Web interface set on context compactor for compaction status updates")
 
         # Generate one-time authentication code
         self.auth_code = self.auth_manager.generate_code()

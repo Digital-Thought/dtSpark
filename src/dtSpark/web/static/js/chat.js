@@ -505,6 +505,114 @@ function toggleWebSearchSources(elementId) {
 }
 
 /**
+ * Show compaction status indicator in the chat
+ * @param {string} status - Status type ('start', 'progress', 'complete', 'warning', 'error')
+ * @param {string} message - Status message to display
+ * @param {object} data - Additional data (tokens, reduction, time)
+ */
+function showCompactionStatus(status, message, data) {
+    const messagesContainer = document.getElementById('chat-messages');
+    const compactionId = 'compaction-indicator';
+
+    // Get or create the compaction indicator
+    let indicator = document.getElementById(compactionId);
+
+    if (status === 'start') {
+        // Create new indicator if starting
+        if (indicator) {
+            indicator.remove();
+        }
+
+        indicator = document.createElement('div');
+        indicator.className = 'compaction-indicator';
+        indicator.id = compactionId;
+        indicator.innerHTML = `
+            <div class="compaction-header">
+                <div class="compaction-left">
+                    <i class="bi bi-layers spin"></i>
+                    <span class="compaction-message">${escapeHtml(message)}</span>
+                </div>
+                <div class="compaction-spinner">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Compacting...</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        messagesContainer.appendChild(indicator);
+        scrollToBottom();
+
+    } else if (status === 'progress' && indicator) {
+        // Update progress message
+        const messageSpan = indicator.querySelector('.compaction-message');
+        if (messageSpan) {
+            messageSpan.textContent = message;
+        }
+
+    } else if (status === 'complete') {
+        // Update to complete state
+        if (indicator) {
+            indicator.className = 'compaction-indicator complete';
+            const originalTokens = data.original_tokens ? data.original_tokens.toLocaleString() : '?';
+            const compactedTokens = data.compacted_tokens ? data.compacted_tokens.toLocaleString() : '?';
+            const reductionPct = data.reduction_pct ? data.reduction_pct.toFixed(1) : '?';
+            const elapsedTime = data.elapsed_time ? data.elapsed_time.toFixed(1) : '?';
+
+            indicator.innerHTML = `
+                <div class="compaction-header">
+                    <div class="compaction-left">
+                        <i class="bi bi-check-circle-fill text-success"></i>
+                        <span class="compaction-message">Context compacted</span>
+                    </div>
+                </div>
+                <div class="compaction-details">
+                    <span><i class="bi bi-file-earmark-minus"></i> ${originalTokens} → ${compactedTokens} tokens</span>
+                    <span><i class="bi bi-graph-down-arrow"></i> ${reductionPct}% reduction</span>
+                    <span><i class="bi bi-clock"></i> ${elapsedTime}s</span>
+                </div>
+            `;
+        }
+
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            if (indicator && indicator.parentNode) {
+                indicator.classList.add('fade-out');
+                setTimeout(() => {
+                    if (indicator.parentNode) {
+                        indicator.remove();
+                    }
+                }, 500);
+            }
+        }, 5000);
+
+    } else if ((status === 'warning' || status === 'error') && indicator) {
+        // Show warning/error state
+        const iconClass = status === 'error' ? 'bi-x-circle-fill text-danger' : 'bi-exclamation-triangle-fill text-warning';
+        indicator.className = `compaction-indicator ${status}`;
+        indicator.innerHTML = `
+            <div class="compaction-header">
+                <div class="compaction-left">
+                    <i class="bi ${iconClass}"></i>
+                    <span class="compaction-message">${escapeHtml(message)}</span>
+                </div>
+            </div>
+        `;
+
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            if (indicator && indicator.parentNode) {
+                indicator.classList.add('fade-out');
+                setTimeout(() => {
+                    if (indicator.parentNode) {
+                        indicator.remove();
+                    }
+                }, 500);
+            }
+        }, 5000);
+    }
+}
+
+/**
  * Append a status message (e.g., "Processing...", "Generating response...")
  * @param {string} message - Status message
  * @param {string} id - Optional ID for the status element (for later removal)

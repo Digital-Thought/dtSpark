@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a22] - 2026-02-14
+
+### Added
+- **Compaction Status Indicator in Web UI** - Visual feedback when context compaction occurs
+  - Displays "Context compacting..." indicator with spinner when compaction starts
+  - Shows progress messages during compaction analysis
+  - Displays completion summary with token reduction stats and elapsed time
+  - Auto-hides after 5 seconds on completion
+  - Warning/error states for compaction issues
+  - Styled indicator with cyan accent for in-progress, green for complete
+
+### Fixed
+- Web interface now properly connected to context compactor for status updates
+
+---
+
 ## [1.1.0a21] - 2026-02-14
 
 ### Added

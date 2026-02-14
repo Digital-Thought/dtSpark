@@ -232,3 +232,45 @@ class WebInterface:
 
         logger.info(f"Security response submitted: confirmed={confirmed}")
         return True
+
+    # Compaction status tracking
+    def set_compaction_status(self, status: str, message: str = None,
+                              original_tokens: int = None, compacted_tokens: int = None,
+                              reduction_pct: float = None, elapsed_time: float = None):
+        """
+        Set the current compaction status for streaming to web UI.
+
+        Args:
+            status: Status type ('start', 'progress', 'complete', 'warning', 'error')
+            message: Status message to display
+            original_tokens: Original token count (for complete status)
+            compacted_tokens: Compacted token count (for complete status)
+            reduction_pct: Reduction percentage (for complete status)
+            elapsed_time: Time taken in seconds (for complete status)
+        """
+        self._compaction_status = {
+            'status': status,
+            'message': message,
+            'original_tokens': original_tokens,
+            'compacted_tokens': compacted_tokens,
+            'reduction_pct': reduction_pct,
+            'elapsed_time': elapsed_time,
+            'timestamp': __import__('time').time()
+        }
+
+    def get_compaction_status(self) -> dict:
+        """
+        Get and clear the current compaction status if any.
+
+        Returns:
+            Dictionary with compaction status, or None if no status pending
+        """
+        status = getattr(self, '_compaction_status', None)
+        if status:
+            self._compaction_status = None
+            return status
+        return None
+
+    def clear_compaction_status(self):
+        """Clear any pending compaction status."""
+        self._compaction_status = None

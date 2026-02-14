@@ -123,6 +123,14 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                 showSecurityWarningDialog(data.request_id, data.severity, data.issues, data.explanation, data.patterns);
             });
 
+            eventSource.addEventListener('compaction_status', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Compaction status:', data);
+
+                // Display compaction status in chat
+                showCompactionStatus(data.status, data.message, data);
+            });
+
             eventSource.addEventListener('progress', (event) => {
                 const data = JSON.parse(event.data);
                 // Update progress (if we want to show a progress bar)

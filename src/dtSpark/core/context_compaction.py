@@ -527,6 +527,11 @@ class ContextCompactor:
         self._display_info(f"Completed in {elapsed_time:.1f} seconds")
         self._display_separator()
 
+        # Web interface complete notification with full metrics
+        self._display_compaction_complete(
+            original_token_count, compacted_token_count, reduction_pct, elapsed_time
+        )
+
     def _check_rate_limits_for_compaction(
         self, compaction_prompt: str, original_token_count: int, service=None
     ) -> Dict[str, Any]:
@@ -814,32 +819,54 @@ class ContextCompactor:
         """Display progress message via available interface."""
         if self.cli_interface:
             self.cli_interface.print_info(message)
-        # Web interface handling would go here if needed
+        if self.web_interface:
+            self.web_interface.set_compaction_status('start', message)
 
     def _display_info(self, message: str):
         """Display info message via available interface."""
         if self.cli_interface:
             self.cli_interface.print_info(message)
+        if self.web_interface:
+            self.web_interface.set_compaction_status('progress', message)
 
     def _display_success(self, message: str):
         """Display success message via available interface."""
         if self.cli_interface:
             self.cli_interface.print_success(message)
+        # Success is handled by _display_compaction_complete for web interface
 
     def _display_warning(self, message: str):
         """Display warning message via available interface."""
         if self.cli_interface:
             self.cli_interface.print_warning(message)
+        if self.web_interface:
+            self.web_interface.set_compaction_status('warning', message)
 
     def _display_error(self, message: str):
         """Display error message via available interface."""
         if self.cli_interface:
             self.cli_interface.print_error(message)
+        if self.web_interface:
+            self.web_interface.set_compaction_status('error', message)
 
     def _display_separator(self):
         """Display separator via available interface."""
         if self.cli_interface:
             self.cli_interface.print_separator("─")
+        # No web equivalent needed
+
+    def _display_compaction_complete(self, original_tokens: int, compacted_tokens: int,
+                                      reduction_pct: float, elapsed_time: float):
+        """Display compaction completion via web interface."""
+        if self.web_interface:
+            self.web_interface.set_compaction_status(
+                'complete',
+                f"Compaction complete: {original_tokens:,} → {compacted_tokens:,} tokens ({reduction_pct:.1f}% reduction)",
+                original_tokens=original_tokens,
+                compacted_tokens=compacted_tokens,
+                reduction_pct=reduction_pct,
+                elapsed_time=elapsed_time
+            )
 
 
 def get_provider_from_model_id(model_id: str) -> str:
