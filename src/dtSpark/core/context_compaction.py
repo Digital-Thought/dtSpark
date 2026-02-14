@@ -365,9 +365,19 @@ class ContextCompactor:
                 compaction_prompt, original_token_count, service
             )
             if not rate_limit_check['can_proceed']:
-                self._display_warning(rate_limit_check['message'])
-                logging.warning(f"Compaction skipped: {rate_limit_check['message']}")
-                return False
+                # Try chunked compaction as fallback
+                self._display_warning(
+                    f"Full compaction exceeds rate limits. Attempting chunked compaction..."
+                )
+                logging.info(
+                    f"Attempting chunked compaction for {original_message_count} messages "
+                    f"({original_token_count:,} tokens)"
+                )
+                return self._perform_chunked_compaction(
+                    conversation_id, messages, original_message_count,
+                    original_token_count, limits, service, start_time,
+                    rate_limit_check.get('rate_limit', 30000)
+                )
 
             max_compaction_tokens, _ = self._calculate_compaction_tokens(
                 compaction_prompt, original_token_count, limits, service
@@ -401,6 +411,295 @@ class ContextCompactor:
             logging.error(f"Compaction failed with error: {e}", exc_info=True)
             self._display_error(f"Compaction failed: {str(e)}")
             return False
+
+    def _perform_chunked_compaction(
+        self, conversation_id: int, messages: List[Dict],
+        original_message_count: int, original_token_count: int,
+        limits: Dict[str, int], service, start_time,
+        rate_limit: int
+    ) -> bool:
+        """
+        Perform chunked compaction when full compaction exceeds rate limits.
+
+        Splits messages into chunks that fit within rate limits, compacts each
+        chunk separately, then combines summaries.
+
+        Args:
+            conversation_id: Conversation to compact
+            messages: List of message dictionaries
+            original_message_count: Original number of messages
+            original_token_count: Original token count
+            limits: Context limits dict
+            service: LLM service to use
+            start_time: When compaction started
+            rate_limit: Token rate limit to stay within
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Calculate safe chunk size (use 60% of rate limit to leave room for prompt overhead)
+            safe_chunk_tokens = int(rate_limit * 0.6)
+            self._display_info(
+                f"Chunked compaction: splitting into ~{safe_chunk_tokens:,} token chunks"
+            )
+
+            # Split messages into chunks based on token count
+            chunks = []
+            current_chunk = []
+            current_chunk_tokens = 0
+
+            for msg in messages:
+                msg_tokens = msg.get('token_count', 0) or len(msg.get('content', '')) // 4
+                if current_chunk_tokens + msg_tokens > safe_chunk_tokens and current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = [msg]
+                    current_chunk_tokens = msg_tokens
+                else:
+                    current_chunk.append(msg)
+                    current_chunk_tokens += msg_tokens
+
+            if current_chunk:
+                chunks.append(current_chunk)
+
+            logging.info(f"Chunked compaction: {len(chunks)} chunks from {len(messages)} messages")
+            self._display_info(f"Processing {len(chunks)} chunks...")
+
+            # Compact each chunk
+            chunk_summaries = []
+            for i, chunk in enumerate(chunks):
+                chunk_tokens = sum(m.get('token_count', 0) or len(m.get('content', '')) // 4
+                                   for m in chunk)
+                self._display_info(f"Compacting chunk {i+1}/{len(chunks)} ({len(chunk)} messages, {chunk_tokens:,} tokens)...")
+
+                chunk_prompt = self._build_chunk_compaction_prompt(
+                    self._format_messages_for_compaction(chunk),
+                    len(chunk),
+                    chunk_tokens,
+                    i + 1,
+                    len(chunks)
+                )
+
+                # Calculate max output for this chunk
+                max_chunk_output = min(4000, max(500, int(chunk_tokens * self.compaction_ratio)))
+
+                chunk_summary = self._invoke_compaction_model(chunk_prompt, max_chunk_output, service)
+                if chunk_summary:
+                    chunk_summaries.append(chunk_summary)
+                    logging.debug(f"Chunk {i+1} compacted: {len(chunk_summary)} chars")
+                else:
+                    logging.warning(f"Chunk {i+1} compaction failed, using truncated content")
+                    # Fallback: use first and last message of chunk
+                    fallback = f"[Chunk {i+1} summary unavailable]\n"
+                    if chunk:
+                        fallback += f"First: {chunk[0].get('content', '')[:200]}...\n"
+                        if len(chunk) > 1:
+                            fallback += f"Last: {chunk[-1].get('content', '')[:200]}..."
+                    chunk_summaries.append(fallback)
+
+            # Combine chunk summaries
+            self._display_info("Combining chunk summaries...")
+            combined_summary = self._combine_chunk_summaries(chunk_summaries, service, limits)
+
+            if not combined_summary or len(combined_summary) < 200:
+                logging.warning("Combined summary too brief, using concatenated chunks")
+                combined_summary = "\n\n---\n\n".join(chunk_summaries)
+
+            compacted_token_count = service.count_tokens(combined_summary)
+
+            # Store results
+            self._store_compaction_results(
+                conversation_id, messages, combined_summary,
+                original_message_count, original_token_count,
+                compacted_token_count, limits['context_window']
+            )
+
+            self._report_compaction_success(
+                start_time, original_message_count,
+                original_token_count, compacted_token_count
+            )
+            return True
+
+        except Exception as e:
+            logging.error(f"Chunked compaction failed: {e}", exc_info=True)
+            self._display_error(f"Chunked compaction failed: {str(e)}")
+
+            # Emergency fallback: hard truncation
+            self._display_warning(
+                "Falling back to emergency truncation to prevent conversation lockout"
+            )
+            return self._perform_emergency_truncation(
+                conversation_id, messages, original_message_count,
+                original_token_count, limits, start_time
+            )
+
+    def _perform_emergency_truncation(
+        self, conversation_id: int, messages: List[Dict],
+        original_message_count: int, original_token_count: int,
+        limits: Dict[str, int], start_time
+    ) -> bool:
+        """
+        Emergency fallback: truncate old messages when compaction fails.
+
+        Keeps the most recent messages that fit within a safe token budget,
+        plus a warning note about truncated history.
+
+        Args:
+            conversation_id: Conversation to truncate
+            messages: List of message dictionaries
+            original_message_count: Original number of messages
+            original_token_count: Original token count
+            limits: Context limits dict
+            start_time: When compaction started
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            context_window = limits.get('context_window', 200000)
+            # Keep messages up to 20% of context window
+            target_tokens = int(context_window * 0.2)
+
+            self._display_warning(
+                f"Emergency truncation: keeping most recent messages up to {target_tokens:,} tokens"
+            )
+
+            # Select messages from the end until we hit target
+            kept_messages = []
+            kept_tokens = 0
+            for msg in reversed(messages):
+                msg_tokens = msg.get('token_count', 0) or len(msg.get('content', '')) // 4
+                if kept_tokens + msg_tokens > target_tokens:
+                    break
+                kept_messages.insert(0, msg)
+                kept_tokens += msg_tokens
+
+            if len(kept_messages) < 2:
+                # Keep at least the last 2 messages
+                kept_messages = messages[-2:] if len(messages) >= 2 else messages
+                kept_tokens = sum(m.get('token_count', 0) or len(m.get('content', '')) // 4
+                                  for m in kept_messages)
+
+            truncated_count = original_message_count - len(kept_messages)
+            truncated_tokens = original_token_count - kept_tokens
+
+            # Create truncation notice
+            truncation_notice = (
+                f"[CONVERSATION TRUNCATED]\n\n"
+                f"Due to context limits, {truncated_count} earlier messages "
+                f"({truncated_tokens:,} tokens) were removed.\n"
+                f"The conversation continues with the {len(kept_messages)} most recent messages.\n\n"
+                f"If you need information from the truncated portion, please ask and "
+                f"I'll do my best to help based on what remains."
+            )
+
+            # Store truncation (similar to compaction but with truncation notice)
+            self._store_compaction_results(
+                conversation_id, messages, truncation_notice,
+                original_message_count, original_token_count,
+                kept_tokens, context_window
+            )
+
+            elapsed_time = (datetime.now() - start_time).total_seconds()
+            reduction_pct = (truncated_tokens / original_token_count * 100
+                           ) if original_token_count > 0 else 0
+
+            self._display_warning(
+                f"Emergency truncation complete: {truncated_count} messages removed "
+                f"({reduction_pct:.1f}% reduction)"
+            )
+            logging.warning(
+                f"Emergency truncation: {original_message_count} → {len(kept_messages)} messages, "
+                f"{original_token_count:,} → {kept_tokens:,} tokens in {elapsed_time:.1f}s"
+            )
+
+            # Emit web interface update
+            if self.web_interface:
+                self.web_interface.set_compaction_status(
+                    'warning',
+                    f"Emergency truncation: {truncated_count} messages removed ({reduction_pct:.1f}% reduction)",
+                    original_tokens=original_token_count,
+                    compacted_tokens=kept_tokens,
+                    reduction_pct=reduction_pct,
+                    elapsed_time=elapsed_time
+                )
+
+            return True
+
+        except Exception as e:
+            logging.error(f"Emergency truncation failed: {e}", exc_info=True)
+            self._display_error(f"Emergency truncation failed: {str(e)}")
+            return False
+
+    def _build_chunk_compaction_prompt(
+        self, formatted_messages: str, message_count: int, token_count: int,
+        chunk_num: int, total_chunks: int
+    ) -> str:
+        """Build a prompt for compacting a single chunk of messages."""
+        return f"""You are summarising part {chunk_num} of {total_chunks} of a conversation.
+
+This chunk contains {message_count} messages ({token_count:,} tokens).
+
+Create a concise summary that preserves:
+- Key decisions and conclusions
+- Important facts, data, or code snippets
+- Action items or commitments
+- Critical context needed for continuation
+
+CONVERSATION CHUNK {chunk_num}/{total_chunks}:
+{formatted_messages}
+
+Provide a focused summary of this chunk (aim for 10-20% of original length):"""
+
+    def _combine_chunk_summaries(
+        self, chunk_summaries: List[str], service, limits: Dict[str, int]
+    ) -> str:
+        """Combine chunk summaries into a final coherent summary."""
+        # If only a few chunks, just concatenate with headers
+        if len(chunk_summaries) <= 3:
+            combined = "[Summary of previous conversation]\n\n"
+            for i, summary in enumerate(chunk_summaries):
+                combined += f"### Part {i+1}\n{summary}\n\n"
+            return combined
+
+        # For many chunks, do a final summarisation pass
+        chunks_text = "\n\n---\n\n".join(
+            f"CHUNK {i+1}:\n{summary}" for i, summary in enumerate(chunk_summaries)
+        )
+
+        combine_prompt = f"""You have {len(chunk_summaries)} summarised chunks from a single conversation.
+Combine these into one coherent summary that:
+- Maintains chronological flow
+- Preserves all key information
+- Removes redundancy
+- Creates a unified narrative
+
+CHUNK SUMMARIES:
+{chunks_text}
+
+Create a unified summary:"""
+
+        # Check if combine prompt fits in rate limits
+        prompt_tokens = service.count_tokens(combine_prompt) if hasattr(service, 'count_tokens') else len(combine_prompt) // 4
+        if prompt_tokens > 25000:
+            # Too large, just concatenate
+            logging.warning("Combine prompt too large, using concatenation")
+            combined = "[Summary of previous conversation]\n\n"
+            for i, summary in enumerate(chunk_summaries):
+                combined += f"### Part {i+1}\n{summary}\n\n"
+            return combined
+
+        max_output = min(8000, limits.get('max_output', 8192))
+        result = self._invoke_compaction_model(combine_prompt, max_output, service)
+
+        if result:
+            return f"[Summary of previous conversation]\n\n{result}"
+        else:
+            # Fallback to concatenation
+            combined = "[Summary of previous conversation]\n\n"
+            for i, summary in enumerate(chunk_summaries):
+                combined += f"### Part {i+1}\n{summary}\n\n"
+            return combined
 
     def _calculate_compaction_tokens(self, compaction_prompt: str,
                                      original_token_count: int,

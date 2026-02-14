@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a23] - 2026-02-14
+
+### Added
+- **Chunked Compaction for Large Conversations** - Fallback strategy when full compaction exceeds rate limits
+  - Automatically splits large conversations into chunks that fit within rate limits
+  - Compacts each chunk separately, then combines summaries
+  - Prevents "compaction exceeds rate limit" errors that would lock out conversations
+
+- **Emergency Truncation Fallback** - Last resort when even chunked compaction fails
+  - Keeps the most recent messages up to 20% of context window
+  - Adds truncation notice explaining what was removed
+  - Prevents complete conversation lockout in extreme cases
+
+### Fixed
+- Conversations no longer get stuck when they grow too large for single-pass compaction
+- Anthropic Direct rate limit errors during compaction now trigger chunked fallback
+
+---
+
 ## [1.1.0a22] - 2026-02-14
 
 ### Added
