@@ -98,7 +98,7 @@ setup(
         # Data handling
         "pyyaml>=6.0",
         # Application framework
-        "dtPyAppFramework>=4.2.1",
+        "dtPyAppFramework>=4.3.0",
         # Cryptography for SSL
         "cryptography>=41.0.0",
         # Anthropic direct API (optional but commonly used)
