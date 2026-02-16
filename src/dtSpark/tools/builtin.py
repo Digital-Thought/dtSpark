@@ -1861,7 +1861,6 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                         run.text = ""
 
                     lines = new_text.split('\n')
-                    current_para = first_para
                     first_line = True
 
                     for line in lines:
@@ -1896,7 +1895,6 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                                     pass
                             # Add formatted content
                             add_formatted_runs(new_para, content)
-                            current_para = new_para
 
             # Replace placeholders in paragraphs
             # We need to iterate carefully as we may insert new paragraphs

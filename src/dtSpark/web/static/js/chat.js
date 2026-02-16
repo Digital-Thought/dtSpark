@@ -645,7 +645,7 @@ function showCompactionStatus(status, message, data) {
 
         // Auto-hide after 5 seconds
         setTimeout(() => {
-            if (indicator && indicator.parentNode) {
+            if (indicator?.parentNode) {
                 indicator.classList.add('fade-out');
                 setTimeout(() => {
                     if (indicator.parentNode) {
@@ -677,7 +677,7 @@ function showCompactionStatus(status, message, data) {
 
         // Auto-hide after 5 seconds
         setTimeout(() => {
-            if (indicator && indicator.parentNode) {
+            if (indicator?.parentNode) {
                 indicator.classList.add('fade-out');
                 setTimeout(() => {
                     if (indicator.parentNode) {
