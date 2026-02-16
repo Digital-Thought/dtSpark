@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a25] - 2026-02-16
+
+### Fixed
+- **SonarQube Code Quality Issues** - Resolved all code quality violations
+  - S1192: Extracted duplicate string literals into constants
+  - S3457: Removed f-string prefix from strings without replacements
+  - S1066: Merged collapsible nested if statements
+  - S5886: Fixed return type hint mismatch in `get_compaction_status()`
+  - S1874: Replaced deprecated `substr()` with `substring()` in JavaScript
+  - S7735: Fixed negated conditions in ternary expressions
+
+---
+
 ## [1.1.0a24] - 2026-02-16
 
 ### Added
