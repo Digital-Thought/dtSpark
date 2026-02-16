@@ -31,6 +31,8 @@ _TAR_GZ = 'tar.gz'
 _TAR_BZ2 = 'tar.bz2'
 _TAR_BZ2_MODE = 'r:bz2'
 _TAR_OPEN_MODES = {_TAR_GZ: 'r:gz', _TAR_BZ2: _TAR_BZ2_MODE}
+_STYLE_LIST_NUMBER = 'List Number'
+_STYLE_LIST_BULLET = 'List Bullet'
 
 
 
@@ -1636,14 +1638,13 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
         }
 
     # Validate content has required fields when provided
-    if not template_path and content:
-        if not content.get('paragraphs'):
-            logging.warning("create_word_document failed: content missing 'paragraphs'")
-            return {
-                "success": False,
-                "error": "Content must include 'paragraphs' array with document text. "
-                         "Example: {\"content\": {\"title\": \"My Doc\", \"paragraphs\": [{\"text\": \"Your content here\"}]}}"
-            }
+    if not template_path and content and not content.get('paragraphs'):
+        logging.warning("create_word_document failed: content missing 'paragraphs'")
+        return {
+            "success": False,
+            "error": "Content must include 'paragraphs' array with document text. "
+                     "Example: {\"content\": {\"title\": \"My Doc\", \"paragraphs\": [{\"text\": \"Your content here\"}]}}"
+        }
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:
@@ -1791,7 +1792,7 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                 para._p.addnext(new_p._p)
                 return new_p
 
-            def replace_with_formatted_content(para, new_text, parent_element=None):
+            def replace_with_formatted_content(para, new_text, _parent_element=None):  # noqa: S1172
                 """
                 Replace paragraph with formatted content, creating proper lists.
                 Returns list of paragraphs created (for tracking insertion point).
@@ -1816,12 +1817,12 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                         # Use the original paragraph for the first line
                         if line_type == 'numbered':
                             try:
-                                para.style = 'List Number'
+                                para.style = _STYLE_LIST_NUMBER
                             except KeyError:
                                 pass
                         elif line_type == 'bullet':
                             try:
-                                para.style = 'List Bullet'
+                                para.style = _STYLE_LIST_BULLET
                             except KeyError:
                                 pass
                         # Add formatted content
@@ -1830,9 +1831,9 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                     else:
                         # Create new paragraphs for subsequent lines
                         if line_type == 'numbered':
-                            new_para = insert_paragraph_after(current_para, content, 'List Number')
+                            new_para = insert_paragraph_after(current_para, content, _STYLE_LIST_NUMBER)
                         elif line_type == 'bullet':
-                            new_para = insert_paragraph_after(current_para, content, 'List Bullet')
+                            new_para = insert_paragraph_after(current_para, content, _STYLE_LIST_BULLET)
                         else:
                             # Plain text - check if it's empty (paragraph break)
                             if content.strip():
@@ -1869,12 +1870,12 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                         if first_line:
                             if line_type == 'numbered':
                                 try:
-                                    first_para.style = 'List Number'
+                                    first_para.style = _STYLE_LIST_NUMBER
                                 except KeyError:
                                     pass
                             elif line_type == 'bullet':
                                 try:
-                                    first_para.style = 'List Bullet'
+                                    first_para.style = _STYLE_LIST_BULLET
                                 except KeyError:
                                     pass
                             # Add formatted content
@@ -1885,12 +1886,12 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
                             new_para = cell.add_paragraph()
                             if line_type == 'numbered':
                                 try:
-                                    new_para.style = 'List Number'
+                                    new_para.style = _STYLE_LIST_NUMBER
                                 except KeyError:
                                     pass
                             elif line_type == 'bullet':
                                 try:
-                                    new_para.style = 'List Bullet'
+                                    new_para.style = _STYLE_LIST_BULLET
                                 except KeyError:
                                     pass
                             # Add formatted content
@@ -1948,7 +1949,7 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
             # Define valid built-in styles that python-docx supports
             valid_styles = {
                 'Normal', 'Title', 'Subtitle', 'Quote', 'Intense Quote',
-                'List Paragraph', 'List Bullet', 'List Number',
+                'List Paragraph', _STYLE_LIST_BULLET, _STYLE_LIST_NUMBER,
                 'Heading 1', 'Heading 2', 'Heading 3', 'Heading 4',
                 'Heading 5', 'Heading 6', 'Heading 7', 'Heading 8', 'Heading 9',
                 'Body Text', 'Body Text 2', 'Body Text 3',

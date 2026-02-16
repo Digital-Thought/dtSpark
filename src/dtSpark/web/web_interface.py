@@ -258,7 +258,7 @@ class WebInterface:
             'timestamp': __import__('time').time()
         }
 
-    def get_compaction_status(self) -> dict:
+    def get_compaction_status(self) -> Optional[Dict]:
         """
         Get and clear the current compaction status if any.
 

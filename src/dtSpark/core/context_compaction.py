@@ -18,6 +18,9 @@ import re
 from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 
+# Constants for repeated string literals (SonarCloud S1192)
+_TOOL_RESULTS_MARKER = '[TOOL_RESULTS]'
+_SUMMARY_PREFIX = "[Summary of previous conversation]\n\n"
 
 # Compaction prompt template for single-pass intelligent compaction
 COMPACTION_PROMPT_TEMPLATE = '''You are performing context compaction for an ongoing conversation. Your task is to distill the conversation history into a high-fidelity compressed format that enables continuation with minimal performance degradation.
@@ -367,7 +370,7 @@ class ContextCompactor:
             if not rate_limit_check['can_proceed']:
                 # Try chunked compaction as fallback
                 self._display_warning(
-                    f"Full compaction exceeds rate limits. Attempting chunked compaction..."
+                    "Full compaction exceeds rate limits. Attempting chunked compaction..."
                 )
                 logging.info(
                     f"Attempting chunked compaction for {original_message_count} messages "
@@ -657,7 +660,7 @@ Provide a focused summary of this chunk (aim for 10-20% of original length):"""
         """Combine chunk summaries into a final coherent summary."""
         # If only a few chunks, just concatenate with headers
         if len(chunk_summaries) <= 3:
-            combined = "[Summary of previous conversation]\n\n"
+            combined = _SUMMARY_PREFIX
             for i, summary in enumerate(chunk_summaries):
                 combined += f"### Part {i+1}\n{summary}\n\n"
             return combined
@@ -684,7 +687,7 @@ Create a unified summary:"""
         if prompt_tokens > 25000:
             # Too large, just concatenate
             logging.warning("Combine prompt too large, using concatenation")
-            combined = "[Summary of previous conversation]\n\n"
+            combined = _SUMMARY_PREFIX
             for i, summary in enumerate(chunk_summaries):
                 combined += f"### Part {i+1}\n{summary}\n\n"
             return combined
@@ -693,10 +696,10 @@ Create a unified summary:"""
         result = self._invoke_compaction_model(combine_prompt, max_output, service)
 
         if result:
-            return f"[Summary of previous conversation]\n\n{result}"
+            return f"{_SUMMARY_PREFIX}{result}"
         else:
             # Fallback to concatenation
-            combined = "[Summary of previous conversation]\n\n"
+            combined = _SUMMARY_PREFIX
             for i, summary in enumerate(chunk_summaries):
                 combined += f"### Part {i+1}\n{summary}\n\n"
             return combined
@@ -793,9 +796,9 @@ Create a unified summary:"""
         completed_tool_ids = set()
         for msg in messages:
             content = msg.get('content', '')
-            if msg.get('role') == 'user' and content.startswith('[TOOL_RESULTS]'):
+            if msg.get('role') == 'user' and content.startswith(_TOOL_RESULTS_MARKER):
                 try:
-                    tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+                    tool_results_json = content.replace(_TOOL_RESULTS_MARKER, '', 1)
                     tool_results = json.loads(tool_results_json)
                     if isinstance(tool_results, list):
                         for result in tool_results:
@@ -1034,7 +1037,7 @@ Create a unified summary:"""
         if content.startswith('[COMPACTED CONTEXT'):
             return self._format_compacted_content(content, time_str)
 
-        if content.startswith('[TOOL_RESULTS]'):
+        if content.startswith(_TOOL_RESULTS_MARKER):
             return self._format_tool_results(role, content, time_str)
 
         if role == 'ASSISTANT' and content.startswith('['):
@@ -1067,7 +1070,7 @@ Create a unified summary:"""
         """Format a tool results message."""
         lines = [f"\n[{role}]{time_str} Tool Results:"]
         try:
-            tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+            tool_results_json = content.replace(_TOOL_RESULTS_MARKER, '', 1)
             tool_results = json.loads(tool_results_json)
             if isinstance(tool_results, list):
                 for i, result in enumerate(tool_results, 1):

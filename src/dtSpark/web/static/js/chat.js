@@ -283,7 +283,7 @@ function appendRollupSummary(content, timestamp = null) {
  * @returns {string} Unique ID
  */
 function generateToolId() {
-    return 'tool-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    return 'tool-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
 }
 
 /**
@@ -485,7 +485,7 @@ function appendWebSearchResults(toolUseId, sources, sourceCount) {
                 <div class="web-search-left">
                     <i class="bi bi-globe"></i>
                     <span class="web-search-text">Web search${queryDisplay}</span>
-                    <span class="web-search-count">(${sourceCount} source${sourceCount !== 1 ? 's' : ''})</span>
+                    <span class="web-search-count">(${sourceCount} source${sourceCount === 1 ? '' : 's'})</span>
                 </div>
                 <div class="web-search-right">
                     <i class="bi bi-check-circle-fill text-success"></i>
@@ -534,7 +534,7 @@ function appendWebSearchResults(toolUseId, sources, sourceCount) {
                 <div class="web-search-left">
                     <i class="bi bi-globe"></i>
                     <span class="web-search-text">Web search</span>
-                    <span class="web-search-count">(${sourceCount} source${sourceCount !== 1 ? 's' : ''})</span>
+                    <span class="web-search-count">(${sourceCount} source${sourceCount === 1 ? '' : 's'})</span>
                 </div>
                 <div class="web-search-right">
                     <i class="bi bi-check-circle-fill text-success"></i>
