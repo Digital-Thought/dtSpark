@@ -9,6 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a24] - 2026-02-16
+
+### Added
+- **Cancel Request Feature** - Users can now cancel long-running requests in the web UI
+  - Send button transforms to Cancel button while processing
+  - Press Escape key to cancel from keyboard
+  - Visual feedback with pulsing animation on Cancel button
+  - Shows "Request cancelled" message when cancelled
+
+- **Timestamps on Tool Calls/Results** - Tool call and result bubbles now display timestamps
+  - Tool calls show timestamp when invoked
+  - Tool results show timestamp when received
+  - Consistent styling with other message timestamps
+
+### Fixed
+- **Compaction Tool Use/Result Pairing** - Fixed API error "unexpected tool_use_id found in tool_result blocks"
+  - Added `_find_in_flight_tool_use_messages()` to identify pending tool_use blocks
+  - Modified `_store_compaction_results()` to preserve messages with pending tool_use
+  - Prevents compaction from breaking tool_use/tool_result pairs during emergency compaction
+
+- **Web Search Token Bloat** - Fixed context window exhaustion from web search (3K → 1M+ tokens)
+  - Removed `encrypted_content` field from web search result storage
+  - Only stores essential fields: url, title, page_age
+  - Prevents rapid context explosion when using web search
+
+- **Embedded Tools Validation** - Improved error messages when content is missing
+  - `write_file`: Now provides example when content parameter is missing
+  - `create_word_document`: Made content required in schema, added validation with examples
+  - Helps model understand required parameters and correct tool usage
+
+- **Compaction Status Indicator Not Appearing** - Fixed indicator not displaying during chunked compaction
+  - Progress events now create indicator if it doesn't exist (handles missed 'start' events)
+  - Complete/warning/error events also create indicator if needed
+  - Ensures visual feedback appears even if some SSE events are missed during rapid updates
+
+---
+
 ## [1.1.0a23] - 2026-02-14
 
 ### Added

@@ -798,7 +798,11 @@ def _execute_write_file(tool_input: Dict[str, Any],
 
     if content is None:
         logging.warning("write_file failed: no content provided")
-        return {"success": False, "error": "Content is required"}
+        return {
+            "success": False,
+            "error": "Content is required. You MUST provide the 'content' parameter with the text to write. "
+                     "Example: {\"path\": \"file.txt\", \"content\": \"Your text content here\"}"
+        }
 
     # Validate path
     validation = _validate_path(file_path, allowed_path)
@@ -1092,7 +1096,7 @@ def _get_document_tools(doc_config: Dict[str, Any]) -> List[Dict[str, Any]]:
                             "additionalProperties": {"type": "string"}
                         }
                     },
-                    "required": ["path"]
+                    "required": ["path", "content"]
                 }
             },
             {
@@ -1620,6 +1624,26 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
 
     if not file_path:
         return {"success": False, "error": _ERR_OUTPUT_PATH_REQUIRED}
+
+    # Validate content is provided if not using a template
+    if not template_path and not content:
+        logging.warning("create_word_document failed: no content provided")
+        return {
+            "success": False,
+            "error": "Content is required. You MUST provide 'content' with 'title' and 'paragraphs'. "
+                     "Example: {\"path\": \"doc.docx\", \"content\": {\"title\": \"Document Title\", "
+                     "\"paragraphs\": [{\"text\": \"First paragraph text\", \"style\": \"Normal\"}]}}"
+        }
+
+    # Validate content has required fields when provided
+    if not template_path and content:
+        if not content.get('paragraphs'):
+            logging.warning("create_word_document failed: content missing 'paragraphs'")
+            return {
+                "success": False,
+                "error": "Content must include 'paragraphs' array with document text. "
+                         "Example: {\"content\": {\"title\": \"My Doc\", \"paragraphs\": [{\"text\": \"Your content here\"}]}}"
+            }
 
     validation = _validate_path(file_path, allowed_path)
     if not validation['valid']:

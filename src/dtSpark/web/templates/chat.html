@@ -196,10 +196,13 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
     // Clear input
     messageInput.value = '';
 
-    // Disable send button
+    // Change send button to cancel button
     const sendBtn = document.getElementById('send-btn');
-    sendBtn.disabled = true;
-    sendBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Sending...';
+    sendBtn.classList.remove('btn-primary');
+    sendBtn.classList.add('btn-warning');
+    sendBtn.innerHTML = '<i class="bi bi-x-circle"></i> Cancel';
+    sendBtn.onclick = handleCancelClick;
+    sendBtn.type = 'button';  // Prevent form submission when clicking cancel
 
     // Add user message to chat with current timestamp
     appendMessage('user', message, new Date().toISOString());
@@ -207,12 +210,42 @@ document.getElementById('chat-form').addEventListener('submit', async (e) => {
     // Send message via SSE (include web search active state)
     await sendMessageWithSSE(conversationId, message, webSearchActive);
 
-    // Re-enable send button
-    sendBtn.disabled = false;
-    sendBtn.innerHTML = '<i class="bi bi-send-fill"></i> Send';
+    // Reset send button
+    resetSendButton();
 
     // Focus on input
     messageInput.focus();
+});
+
+// Handle cancel button click
+function handleCancelClick(e) {
+    e.preventDefault();
+    if (cancelCurrentRequest()) {
+        resetSendButton();
+        showToast('Request cancelled', 'info');
+    }
+}
+
+// Reset send button to original state
+function resetSendButton() {
+    const sendBtn = document.getElementById('send-btn');
+    sendBtn.classList.remove('btn-warning');
+    sendBtn.classList.add('btn-primary');
+    sendBtn.innerHTML = '<i class="bi bi-send-fill"></i> Send';
+    sendBtn.onclick = null;  // Remove cancel handler
+    sendBtn.type = 'submit';  // Restore form submission
+    sendBtn.disabled = false;
+}
+
+// Handle Escape key to cancel request
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isRequestInProgress()) {
+        e.preventDefault();
+        if (cancelCurrentRequest()) {
+            resetSendButton();
+            showToast('Request cancelled (Escape)', 'info');
+        }
+    }
 });
 
 // Show command menu

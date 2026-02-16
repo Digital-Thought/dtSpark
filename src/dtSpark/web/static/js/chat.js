@@ -70,8 +70,8 @@ function appendMessage(role, content, timestamp = null) {
                             // Display text content normally
                             appendRegularMessage('assistant', block.text, timestamp);
                         } else if (block.type === 'tool_use') {
-                            // Display tool call
-                            appendToolCall(block.name, block.input);
+                            // Display tool call with timestamp
+                            appendToolCall(block.name, block.input, timestamp);
                         }
                     });
                     return;
@@ -202,7 +202,7 @@ function appendToolResults(content, timestamp = null) {
                         <div class="tool-header-left">
                             <strong><i class="bi bi-check-circle-fill"></i> Tool Result ${index + 1}:</strong>
                             <code>${escapeHtml(toolUseId)}</code>
-                            ${timestamp ? `<span class="ms-2">${formatTimestamp(timestamp)}</span>` : ''}
+                            ${timestamp ? `<span class="ms-2 text-muted tool-timestamp">${formatTimestamp(timestamp)}</span>` : ''}
                         </div>
                         <div class="tool-header-icons">
                             <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
@@ -232,6 +232,7 @@ function appendToolResults(content, timestamp = null) {
             <div class="tool-header small" onclick="toggleToolContent('${toolId}')">
                 <div class="tool-header-left">
                     <strong><i class="bi bi-check-circle-fill"></i> Tool Results</strong>
+                    ${timestamp ? `<span class="ms-2 text-muted tool-timestamp">${formatTimestamp(timestamp)}</span>` : ''}
                 </div>
                 <div class="tool-header-icons">
                     <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
@@ -325,10 +326,12 @@ function copyToolContent(toolId) {
  * Append a tool call message
  * @param {string} toolName - Tool name
  * @param {object} toolInput - Tool input parameters
+ * @param {string} timestamp - ISO timestamp string (optional, defaults to current time)
  */
-function appendToolCall(toolName, toolInput) {
+function appendToolCall(toolName, toolInput, timestamp = null) {
     const messagesContainer = document.getElementById('chat-messages');
     const toolId = generateToolId();
+    const displayTimestamp = timestamp || new Date().toISOString();
 
     const toolDiv = document.createElement('div');
     toolDiv.className = 'tool-call';
@@ -337,6 +340,7 @@ function appendToolCall(toolName, toolInput) {
         <div class="tool-header small" onclick="toggleToolContent('${toolId}')">
             <div class="tool-header-left">
                 <strong><i class="bi bi-tools"></i> Tool Call:</strong> <code>${escapeHtml(toolName)}</code>
+                <span class="ms-2 text-muted tool-timestamp">${formatTimestamp(displayTimestamp)}</span>
             </div>
             <div class="tool-header-icons">
                 <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
@@ -360,10 +364,12 @@ function appendToolCall(toolName, toolInput) {
  * Append a tool result message
  * @param {string} toolName - Tool name or tool_use_id
  * @param {object} toolResult - Tool result data
+ * @param {string} timestamp - ISO timestamp string (optional, defaults to current time)
  */
-function appendToolResult(toolName, toolResult) {
+function appendToolResult(toolName, toolResult, timestamp = null) {
     const messagesContainer = document.getElementById('chat-messages');
     const toolId = generateToolId();
+    const displayTimestamp = timestamp || new Date().toISOString();
 
     const resultDiv = document.createElement('div');
     resultDiv.className = 'tool-result';
@@ -372,6 +378,7 @@ function appendToolResult(toolName, toolResult) {
         <div class="tool-header small" onclick="toggleToolContent('${toolId}')">
             <div class="tool-header-left">
                 <strong><i class="bi bi-check-circle-fill"></i> Tool Result:</strong> <code>${escapeHtml(toolName)}</code>
+                <span class="ms-2 text-muted tool-timestamp">${formatTimestamp(displayTimestamp)}</span>
             </div>
             <div class="tool-header-icons">
                 <button class="tool-copy-btn" onclick="event.stopPropagation(); copyToolContent('${toolId}')" title="Copy to clipboard">
@@ -408,18 +415,24 @@ function appendWebSearchStart(toolUseId, input) {
     const query = input?.query || '';
     const queryDisplay = query ? `: "${escapeHtml(query)}"` : '';
 
+    // Store query for later use when results arrive
+    searchDiv.dataset.query = query;
+
     searchDiv.innerHTML = `
         <div class="web-search-header">
             <div class="web-search-left">
                 <i class="bi bi-globe spin"></i>
-                <span>Searching the web${queryDisplay}</span>
+                <span class="web-search-text">Searching the web${queryDisplay}</span>
             </div>
-            <div class="web-search-spinner">
-                <div class="spinner-border spinner-border-sm" role="status">
-                    <span class="visually-hidden">Searching...</span>
+            <div class="web-search-right">
+                <div class="web-search-spinner">
+                    <div class="spinner-border spinner-border-sm" role="status">
+                        <span class="visually-hidden">Searching...</span>
+                    </div>
                 </div>
             </div>
         </div>
+        <div class="web-search-sources-content" id="${elementId}-content"></div>
     `;
 
     messagesContainer.appendChild(searchDiv);
@@ -434,72 +447,127 @@ function appendWebSearchStart(toolUseId, input) {
  */
 function appendWebSearchResults(toolUseId, sources, sourceCount) {
     const messagesContainer = document.getElementById('chat-messages');
-    const elementId = `web-search-results-${toolUseId || generateToolId()}`;
 
-    // Find and update the corresponding search indicator if it exists
-    const startIndicator = document.getElementById(`web-search-${toolUseId}`);
-    if (startIndicator) {
-        // Remove the spinner
-        const spinner = startIndicator.querySelector('.web-search-spinner');
-        if (spinner) {
-            spinner.innerHTML = `<i class="bi bi-check-circle-fill text-success"></i>`;
+    // Find the corresponding search indicator
+    const searchIndicator = document.getElementById(`web-search-${toolUseId}`);
+
+    if (searchIndicator) {
+        // Update existing indicator with results
+        const query = searchIndicator.dataset.query || '';
+        const queryDisplay = query ? `: "${escapeHtml(query)}"` : '';
+        const elementId = searchIndicator.id;
+
+        // Build sources HTML
+        let sourcesHtml = '';
+        if (sources && sources.length > 0) {
+            sourcesHtml = '<ul class="web-search-sources">';
+            for (const source of sources) {
+                const title = source.title || source.url || 'Unknown source';
+                const url = source.url || '#';
+                const pageAge = source.page_age ? ` <span class="text-muted small">(${escapeHtml(source.page_age)})</span>` : '';
+                sourcesHtml += `
+                    <li>
+                        <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+                            <i class="bi bi-link-45deg"></i> ${escapeHtml(title)}
+                        </a>${pageAge}
+                    </li>
+                `;
+            }
+            sourcesHtml += '</ul>';
         }
-    }
 
-    const resultsDiv = document.createElement('div');
-    resultsDiv.className = 'web-search-results';
-    resultsDiv.id = elementId;
-
-    let sourcesHtml = '';
-    if (sources && sources.length > 0) {
-        sourcesHtml = '<ul class="web-search-sources">';
-        for (const source of sources) {
-            const title = source.title || source.url || 'Unknown source';
-            const url = source.url || '#';
-            const pageAge = source.page_age ? ` <span class="text-muted small">(${escapeHtml(source.page_age)})</span>` : '';
-            sourcesHtml += `
-                <li>
-                    <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
-                        <i class="bi bi-link-45deg"></i> ${escapeHtml(title)}
-                    </a>${pageAge}
-                </li>
+        // Update header to show completion and make expandable
+        const header = searchIndicator.querySelector('.web-search-header');
+        if (header) {
+            header.className = 'web-search-header clickable';
+            header.onclick = () => toggleWebSearchSources(elementId);
+            header.innerHTML = `
+                <div class="web-search-left">
+                    <i class="bi bi-globe"></i>
+                    <span class="web-search-text">Web search${queryDisplay}</span>
+                    <span class="web-search-count">(${sourceCount} source${sourceCount !== 1 ? 's' : ''})</span>
+                </div>
+                <div class="web-search-right">
+                    <i class="bi bi-check-circle-fill text-success"></i>
+                    <i class="bi bi-chevron-down" id="${elementId}-toggle-icon"></i>
+                </div>
             `;
         }
-        sourcesHtml += '</ul>';
-    }
 
-    resultsDiv.innerHTML = `
-        <div class="web-search-results-header" onclick="toggleWebSearchSources('${elementId}')">
-            <div class="web-search-results-left">
-                <i class="bi bi-search"></i>
-                <span>Found ${sourceCount} source${sourceCount !== 1 ? 's' : ''}</span>
+        // Add sources to the content area
+        const contentDiv = searchIndicator.querySelector('.web-search-sources-content');
+        if (contentDiv) {
+            contentDiv.innerHTML = sourcesHtml;
+        }
+
+        // Mark as complete
+        searchIndicator.classList.add('complete');
+
+    } else {
+        // No matching indicator found - create a standalone results element
+        const elementId = `web-search-${toolUseId || generateToolId()}`;
+
+        const searchDiv = document.createElement('div');
+        searchDiv.className = 'web-search-indicator complete';
+        searchDiv.id = elementId;
+
+        let sourcesHtml = '';
+        if (sources && sources.length > 0) {
+            sourcesHtml = '<ul class="web-search-sources">';
+            for (const source of sources) {
+                const title = source.title || source.url || 'Unknown source';
+                const url = source.url || '#';
+                const pageAge = source.page_age ? ` <span class="text-muted small">(${escapeHtml(source.page_age)})</span>` : '';
+                sourcesHtml += `
+                    <li>
+                        <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">
+                            <i class="bi bi-link-45deg"></i> ${escapeHtml(title)}
+                        </a>${pageAge}
+                    </li>
+                `;
+            }
+            sourcesHtml += '</ul>';
+        }
+
+        searchDiv.innerHTML = `
+            <div class="web-search-header clickable" onclick="toggleWebSearchSources('${elementId}')">
+                <div class="web-search-left">
+                    <i class="bi bi-globe"></i>
+                    <span class="web-search-text">Web search</span>
+                    <span class="web-search-count">(${sourceCount} source${sourceCount !== 1 ? 's' : ''})</span>
+                </div>
+                <div class="web-search-right">
+                    <i class="bi bi-check-circle-fill text-success"></i>
+                    <i class="bi bi-chevron-down" id="${elementId}-toggle-icon"></i>
+                </div>
             </div>
-            <button onclick="event.stopPropagation(); toggleWebSearchSources('${elementId}')" title="Show/Hide sources">
-                <i class="bi bi-chevron-down" id="${elementId}-toggle-icon"></i>
-            </button>
-        </div>
-        <div class="web-search-sources-content" id="${elementId}-content">
-            ${sourcesHtml}
-        </div>
-    `;
+            <div class="web-search-sources-content" id="${elementId}-content">
+                ${sourcesHtml}
+            </div>
+        `;
 
-    messagesContainer.appendChild(resultsDiv);
-    scrollToBottom();
+        messagesContainer.appendChild(searchDiv);
+        scrollToBottom();
+    }
 }
 
 /**
  * Toggle web search sources visibility
- * @param {string} elementId - Element ID of the results container
+ * @param {string} elementId - Element ID of the search indicator
  */
 function toggleWebSearchSources(elementId) {
+    const indicator = document.getElementById(elementId);
     const content = document.getElementById(`${elementId}-content`);
     const icon = document.getElementById(`${elementId}-toggle-icon`);
 
     if (content) {
-        content.classList.toggle('expanded');
+        const isExpanded = content.classList.toggle('expanded');
+        if (indicator) {
+            indicator.classList.toggle('expanded', isExpanded);
+        }
         if (icon) {
-            icon.classList.toggle('bi-chevron-down');
-            icon.classList.toggle('bi-chevron-up');
+            icon.classList.toggle('bi-chevron-down', !isExpanded);
+            icon.classList.toggle('bi-chevron-up', isExpanded);
         }
     }
 }
@@ -517,61 +585,63 @@ function showCompactionStatus(status, message, data) {
     // Get or create the compaction indicator
     let indicator = document.getElementById(compactionId);
 
-    if (status === 'start') {
-        // Create new indicator if starting
-        if (indicator) {
-            indicator.remove();
-        }
-
-        indicator = document.createElement('div');
-        indicator.className = 'compaction-indicator';
-        indicator.id = compactionId;
-        indicator.innerHTML = `
-            <div class="compaction-header">
-                <div class="compaction-left">
-                    <i class="bi bi-layers spin"></i>
-                    <span class="compaction-message">${escapeHtml(message)}</span>
-                </div>
-                <div class="compaction-spinner">
-                    <div class="spinner-border spinner-border-sm" role="status">
-                        <span class="visually-hidden">Compacting...</span>
-                    </div>
-                </div>
-            </div>
-        `;
-        messagesContainer.appendChild(indicator);
-        scrollToBottom();
-
-    } else if (status === 'progress' && indicator) {
-        // Update progress message
-        const messageSpan = indicator.querySelector('.compaction-message');
-        if (messageSpan) {
-            messageSpan.textContent = message;
-        }
-
-    } else if (status === 'complete') {
-        // Update to complete state
-        if (indicator) {
-            indicator.className = 'compaction-indicator complete';
-            const originalTokens = data.original_tokens ? data.original_tokens.toLocaleString() : '?';
-            const compactedTokens = data.compacted_tokens ? data.compacted_tokens.toLocaleString() : '?';
-            const reductionPct = data.reduction_pct ? data.reduction_pct.toFixed(1) : '?';
-            const elapsedTime = data.elapsed_time ? data.elapsed_time.toFixed(1) : '?';
-
+    if (status === 'start' || status === 'progress') {
+        // Create indicator if it doesn't exist (handles both start and progress)
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.className = 'compaction-indicator';
+            indicator.id = compactionId;
             indicator.innerHTML = `
                 <div class="compaction-header">
                     <div class="compaction-left">
-                        <i class="bi bi-check-circle-fill text-success"></i>
-                        <span class="compaction-message">Context compacted</span>
+                        <i class="bi bi-layers spin"></i>
+                        <span class="compaction-message">${escapeHtml(message)}</span>
+                    </div>
+                    <div class="compaction-spinner">
+                        <div class="spinner-border spinner-border-sm" role="status">
+                            <span class="visually-hidden">Compacting...</span>
+                        </div>
                     </div>
                 </div>
-                <div class="compaction-details">
-                    <span><i class="bi bi-file-earmark-minus"></i> ${originalTokens} → ${compactedTokens} tokens</span>
-                    <span><i class="bi bi-graph-down-arrow"></i> ${reductionPct}% reduction</span>
-                    <span><i class="bi bi-clock"></i> ${elapsedTime}s</span>
-                </div>
             `;
+            messagesContainer.appendChild(indicator);
+            scrollToBottom();
+        } else {
+            // Update existing indicator's message
+            const messageSpan = indicator.querySelector('.compaction-message');
+            if (messageSpan) {
+                messageSpan.textContent = message;
+            }
         }
+
+    } else if (status === 'complete') {
+        // Create indicator if it doesn't exist, then update to complete state
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = compactionId;
+            messagesContainer.appendChild(indicator);
+        }
+
+        indicator.className = 'compaction-indicator complete';
+        const originalTokens = data.original_tokens ? data.original_tokens.toLocaleString() : '?';
+        const compactedTokens = data.compacted_tokens ? data.compacted_tokens.toLocaleString() : '?';
+        const reductionPct = data.reduction_pct ? data.reduction_pct.toFixed(1) : '?';
+        const elapsedTime = data.elapsed_time ? data.elapsed_time.toFixed(1) : '?';
+
+        indicator.innerHTML = `
+            <div class="compaction-header">
+                <div class="compaction-left">
+                    <i class="bi bi-check-circle-fill text-success"></i>
+                    <span class="compaction-message">Context compacted</span>
+                </div>
+            </div>
+            <div class="compaction-details">
+                <span><i class="bi bi-file-earmark-minus"></i> ${originalTokens} → ${compactedTokens} tokens</span>
+                <span><i class="bi bi-graph-down-arrow"></i> ${reductionPct}% reduction</span>
+                <span><i class="bi bi-clock"></i> ${elapsedTime}s</span>
+            </div>
+        `;
+        scrollToBottom();
 
         // Auto-hide after 5 seconds
         setTimeout(() => {
@@ -585,8 +655,14 @@ function showCompactionStatus(status, message, data) {
             }
         }, 5000);
 
-    } else if ((status === 'warning' || status === 'error') && indicator) {
-        // Show warning/error state
+    } else if (status === 'warning' || status === 'error') {
+        // Create indicator if it doesn't exist, then show warning/error state
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = compactionId;
+            messagesContainer.appendChild(indicator);
+        }
+
         const iconClass = status === 'error' ? 'bi-x-circle-fill text-danger' : 'bi-exclamation-triangle-fill text-warning';
         indicator.className = `compaction-indicator ${status}`;
         indicator.innerHTML = `
@@ -597,6 +673,7 @@ function showCompactionStatus(status, message, data) {
                 </div>
             </div>
         `;
+        scrollToBottom();
 
         // Auto-hide after 5 seconds
         setTimeout(() => {

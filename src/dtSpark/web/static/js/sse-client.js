@@ -4,6 +4,40 @@
  * Handles real-time streaming of chat responses via SSE
  */
 
+// Track the current EventSource for cancellation
+let currentEventSource = null;
+let isRequestCancelled = false;
+
+/**
+ * Cancel the current SSE request if one is in progress
+ * @returns {boolean} True if a request was cancelled, false otherwise
+ */
+function cancelCurrentRequest() {
+    if (currentEventSource) {
+        console.log('Cancelling current SSE request');
+        isRequestCancelled = true;
+        currentEventSource.close();
+        currentEventSource = null;
+
+        // Hide typing indicator
+        hideTypingIndicator();
+
+        // Show cancellation message
+        appendMessage('system', 'Request cancelled by user.');
+
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Check if a request is currently in progress
+ * @returns {boolean} True if a request is in progress
+ */
+function isRequestInProgress() {
+    return currentEventSource !== null;
+}
+
 /**
  * Send a message and handle streaming response via SSE
  * @param {number} conversationId - The conversation ID
@@ -11,6 +45,8 @@
  * @param {boolean} webSearchActive - Whether web search should be used for this request
  */
 async function sendMessageWithSSE(conversationId, message, webSearchActive = false) {
+    // Reset cancellation flag
+    isRequestCancelled = false;
     // Show typing indicator
     let typingIndicator = showTypingIndicator();
 
@@ -27,6 +63,7 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                 url += '&web_search_active=true';
             }
             const eventSource = new EventSource(url);
+            currentEventSource = eventSource;  // Store reference for cancellation
 
             // Handle different event types
             eventSource.addEventListener('status', (event) => {
@@ -69,6 +106,7 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                             console.warn('No content to display');
                         }
                         eventSource.close();
+                        currentEventSource = null;
                         resolve();
                     } else {
                         // Non-final response - text that appears with tool calls
@@ -141,6 +179,7 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                 // Stream complete
                 console.log('Stream complete');
                 eventSource.close();
+                currentEventSource = null;
 
                 // Hide typing indicator if still visible
                 if (typingIndicator && typingIndicator.parentNode) {
@@ -163,11 +202,14 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                     typingIndicator = null;
                 }
 
-                // Format detailed error message
-                const errorContent = formatErrorMessage(data);
-                appendMessage('error', errorContent);
+                // Format detailed error message (unless cancelled)
+                if (!isRequestCancelled) {
+                    const errorContent = formatErrorMessage(data);
+                    appendMessage('error', errorContent);
+                }
 
                 eventSource.close();
+                currentEventSource = null;
                 resolve();
             });
 
@@ -181,8 +223,8 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                     typingIndicator = null;
                 }
 
-                // If we haven't received any content, show error
-                if (!streamingMessageElement) {
+                // If we haven't received any content and wasn't cancelled, show error
+                if (!streamingMessageElement && !isRequestCancelled) {
                     const errorContent = formatErrorMessage({
                         message: 'Connection lost to the server',
                         error_type: 'ConnectionError',
@@ -192,11 +234,13 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                 }
 
                 eventSource.close();
+                currentEventSource = null;
                 resolve();
             };
 
         } catch (error) {
             console.error('Error sending message:', error);
+            currentEventSource = null;
 
             // Hide typing indicator
             if (typingIndicator) {

@@ -776,6 +776,64 @@ Create a unified summary:"""
 
         return content.strip()
 
+    def _find_in_flight_tool_use_messages(self, messages: List[Dict]) -> List[int]:
+        """
+        Find messages containing tool_use blocks that don't have matching tool_result.
+
+        This prevents compaction from breaking tool_use/tool_result pairing which
+        causes API errors: "unexpected tool_use_id found in tool_result blocks".
+
+        Args:
+            messages: List of message dictionaries
+
+        Returns:
+            List of message indices that should NOT be rolled up
+        """
+        # First, collect all tool_result IDs from user messages
+        completed_tool_ids = set()
+        for msg in messages:
+            content = msg.get('content', '')
+            if msg.get('role') == 'user' and content.startswith('[TOOL_RESULTS]'):
+                try:
+                    tool_results_json = content.replace('[TOOL_RESULTS]', '', 1)
+                    tool_results = json.loads(tool_results_json)
+                    if isinstance(tool_results, list):
+                        for result in tool_results:
+                            if isinstance(result, dict) and result.get('type') == 'tool_result':
+                                tool_id = result.get('tool_use_id')
+                                if tool_id:
+                                    completed_tool_ids.add(tool_id)
+                except json.JSONDecodeError:
+                    pass
+
+        # Now find messages with tool_use blocks that don't have results yet
+        in_flight_indices = []
+        for i, msg in enumerate(messages):
+            if msg.get('role') != 'assistant':
+                continue
+
+            content = msg.get('content', '')
+            if not content.startswith('['):
+                continue
+
+            try:
+                content_blocks = json.loads(content)
+                if not isinstance(content_blocks, list):
+                    continue
+
+                for block in content_blocks:
+                    if isinstance(block, dict) and block.get('type') == 'tool_use':
+                        tool_id = block.get('id')
+                        if tool_id and tool_id not in completed_tool_ids:
+                            # This tool_use has no matching tool_result
+                            in_flight_indices.append(i)
+                            logging.debug(f"Found in-flight tool_use at message {i}: {tool_id}")
+                            break
+            except json.JSONDecodeError:
+                pass
+
+        return in_flight_indices
+
     def _store_compaction_results(self, conversation_id: int, messages: List[Dict],
                                   compacted_content: str, original_message_count: int,
                                   original_token_count: int, compacted_token_count: int,
@@ -794,7 +852,29 @@ Create a unified summary:"""
             compacted_token_count
         )
 
-        message_ids = [msg['id'] for msg in messages]
+        # Find in-flight tool_use messages that should NOT be rolled up
+        # This prevents breaking tool_use/tool_result pairing during emergency compaction
+        in_flight_indices = self._find_in_flight_tool_use_messages(messages)
+
+        if in_flight_indices:
+            # Exclude in-flight messages and their potential subsequent tool_result messages
+            excluded_ids = set()
+            for idx in in_flight_indices:
+                excluded_ids.add(messages[idx]['id'])
+                # Also preserve the next message if it exists (likely the pending tool_result)
+                if idx + 1 < len(messages):
+                    excluded_ids.add(messages[idx + 1]['id'])
+                logging.warning(
+                    f"Preserving in-flight tool_use message at index {idx} "
+                    f"(message ID: {messages[idx]['id']}) from compaction rollup"
+                )
+
+            message_ids = [msg['id'] for msg in messages if msg['id'] not in excluded_ids]
+            logging.info(f"Compaction rollup: {len(message_ids)}/{len(messages)} messages "
+                        f"({len(excluded_ids)} preserved due to in-flight tool_use)")
+        else:
+            message_ids = [msg['id'] for msg in messages]
+
         self.database.mark_messages_as_rolled_up(message_ids)
         self.database.record_rollup(
             conversation_id, original_message_count,

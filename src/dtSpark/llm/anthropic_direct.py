@@ -443,6 +443,9 @@ class AnthropicService(LLMService):
                 }
                 if hasattr(block, 'content') and block.content:
                     # Convert WebSearchResultBlock objects to dictionaries
+                    # Note: We deliberately exclude 'encrypted_content' to prevent context bloat
+                    # The encrypted_content field can contain massive amounts of raw page data
+                    # that causes rapid context window exhaustion (observed: 3K -> 1M+ tokens)
                     search_results = []
                     for result in block.content:
                         result_dict = {'type': getattr(result, 'type', 'web_search_result')}
@@ -452,8 +455,8 @@ class AnthropicService(LLMService):
                             result_dict['title'] = result.title
                         if hasattr(result, 'page_age'):
                             result_dict['page_age'] = result.page_age
-                        if hasattr(result, 'encrypted_content'):
-                            result_dict['encrypted_content'] = result.encrypted_content
+                        # Intentionally NOT storing encrypted_content - it's for Anthropic's
+                        # internal use and storing it causes massive token bloat
                         search_results.append(result_dict)
                     result_block['content'] = search_results
                 content_blocks.append(result_block)
