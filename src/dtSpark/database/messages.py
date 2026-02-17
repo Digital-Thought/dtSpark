@@ -11,7 +11,7 @@ This module handles:
 import sqlite3
 import logging
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 def add_message(conn: sqlite3.Connection, conversation_id: int, role: str,
@@ -119,6 +119,91 @@ def mark_messages_as_rolled_up(conn: sqlite3.Connection, message_ids: List[int],
     ''', message_ids + [user_guid])
     conn.commit()
     logging.info(f"Marked {len(message_ids)} messages as rolled up")
+
+
+def delete_message(conn: sqlite3.Connection, message_id: int,
+                   user_guid: str = None) -> bool:
+    """
+    Delete a specific message from a conversation.
+
+    Used for removing orphan tool_result messages that have no matching tool_use.
+
+    Args:
+        conn: Database connection
+        message_id: ID of the message to delete
+        user_guid: User GUID for multi-user support (for safety filtering)
+
+    Returns:
+        True if message was deleted, False if not found
+    """
+    cursor = conn.cursor()
+
+    # First get the message to update conversation token count
+    cursor.execute('''
+        SELECT conversation_id, token_count FROM messages
+        WHERE id = ? AND user_guid = ?
+    ''', (message_id, user_guid))
+
+    row = cursor.fetchone()
+    if not row:
+        logging.warning(f"Message {message_id} not found for deletion")
+        return False
+
+    conversation_id = row['conversation_id']
+    token_count = row['token_count']
+
+    # Delete the message
+    cursor.execute('''
+        DELETE FROM messages WHERE id = ? AND user_guid = ?
+    ''', (message_id, user_guid))
+
+    # Update conversation total tokens
+    if cursor.rowcount > 0:
+        cursor.execute('''
+            UPDATE conversations
+            SET total_tokens = total_tokens - ?
+            WHERE id = ? AND user_guid = ?
+        ''', (token_count, conversation_id, user_guid))
+
+        conn.commit()
+        logging.info(f"Deleted message {message_id} from conversation {conversation_id}")
+        return True
+
+    return False
+
+
+def find_orphan_tool_result_message(conn: sqlite3.Connection, conversation_id: int,
+                                     tool_use_id: str, user_guid: str = None) -> Optional[int]:
+    """
+    Find a message containing an orphan tool_result with the specified tool_use_id.
+
+    Args:
+        conn: Database connection
+        conversation_id: ID of the conversation
+        tool_use_id: The tool_use_id to search for
+        user_guid: User GUID for multi-user support
+
+    Returns:
+        Message ID if found, None otherwise
+    """
+    cursor = conn.cursor()
+
+    # Search for messages containing this tool_use_id in TOOL_RESULTS
+    cursor.execute('''
+        SELECT id, content FROM messages
+        WHERE conversation_id = ? AND user_guid = ? AND content LIKE '%' || ? || '%'
+        ORDER BY timestamp DESC
+    ''', (conversation_id, user_guid, tool_use_id))
+
+    for row in cursor.fetchall():
+        content = row['content']
+        # Check if this is a TOOL_RESULTS message containing the orphan ID
+        if content.startswith('[TOOL_RESULTS]'):
+            if tool_use_id in content:
+                logging.info(f"Found orphan tool_result in message {row['id']}")
+                return row['id']
+
+    return None
 
 
 def record_rollup(conn: sqlite3.Connection, conversation_id: int,

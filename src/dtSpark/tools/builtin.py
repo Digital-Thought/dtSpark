@@ -1629,7 +1629,7 @@ def _execute_create_word_document(tool_input: Dict[str, Any],
 
     # Validate content is provided if not using a template
     if not template_path and not content:
-        logging.warning("create_word_document failed: no content provided")
+        logging.warning(f"create_word_document failed: no content provided. tool_input keys: {list(tool_input.keys())}, content value: {repr(content)}")
         return {
             "success": False,
             "error": "Content is required. You MUST provide 'content' with 'title' and 'paragraphs'. "

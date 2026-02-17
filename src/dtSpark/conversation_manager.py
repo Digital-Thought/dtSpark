@@ -495,10 +495,19 @@ class ConversationManager:
                 # This is likely a tool_use message stored as JSON
                 try:
                     content_blocks = json.loads(content)
-                    formatted_messages.append({
-                        'role': 'assistant',
-                        'content': content_blocks
-                    })
+                    # Filter out server_tool_use and web_search_tool_result blocks
+                    # These cannot be sent back to the API without encrypted_content,
+                    # which we deliberately strip to prevent context bloat
+                    filtered_blocks = [
+                        block for block in content_blocks
+                        if not isinstance(block, dict) or
+                        block.get('type') not in ('server_tool_use', 'web_search_tool_result')
+                    ]
+                    if filtered_blocks:
+                        formatted_messages.append({
+                            'role': 'assistant',
+                            'content': filtered_blocks
+                        })
                     continue
                 except json.JSONDecodeError:
                     pass  # Not JSON, treat as regular message
@@ -694,6 +703,112 @@ class ConversationManager:
             return "The service is currently overloaded. Please try again later."
         else:
             return "Check the application logs for more details."
+
+    def _handle_orphan_tool_result_error(self, error_message: str) -> bool:
+        """
+        Handle the orphan tool_result error that occurs when a request was cancelled
+        mid-execution, leaving a tool_result without its corresponding tool_use block.
+
+        Args:
+            error_message: The error message containing the orphan tool_use_id
+
+        Returns:
+            True if the orphan was successfully removed and request should be retried,
+            False otherwise
+        """
+        import re
+
+        # Extract the tool_use_id from the error message
+        # Format: "unexpected `tool_use_id` found in `tool_result` blocks: toolu_xxx"
+        match = re.search(r'tool_use_id[`\'":\s]+(?:found[^:]*:\s*)?([a-zA-Z0-9_-]+)', error_message)
+        if not match:
+            logging.warning("Could not extract tool_use_id from orphan error message")
+            return False
+
+        orphan_tool_use_id = match.group(1)
+        logging.info(f"Detected orphan tool_use_id: {orphan_tool_use_id}")
+
+        # Check if we have a web interface to prompt the user
+        if self.web_interface:
+            # Prompt user for confirmation via web UI modal
+            user_confirmed = self.web_interface.prompt_conflict_resolution(
+                tool_use_id=orphan_tool_use_id,
+                error_message=error_message
+            )
+
+            if not user_confirmed:
+                logging.info("User declined to remove orphan tool_result")
+                return False
+
+        elif self.cli_interface:
+            # CLI mode - prompt on console
+            self.cli_interface.print_separator("─")
+            self.cli_interface.print_warning("⚠️  Conversation History Conflict Detected")
+            self.cli_interface.print_info(
+                "A previous cancellation left the conversation in an inconsistent state."
+            )
+            self.cli_interface.print_info(
+                f"There is a tool result without a matching tool call (ID: {orphan_tool_use_id})"
+            )
+
+            # Simple yes/no prompt for CLI
+            try:
+                response = input("Remove the orphan tool result and retry? (y/n): ").strip().lower()
+                if response not in ('y', 'yes'):
+                    logging.info("User declined to remove orphan tool_result (CLI)")
+                    return False
+            except (EOFError, KeyboardInterrupt):
+                return False
+        else:
+            # No interface available, cannot prompt user
+            logging.warning("No interface available to prompt for orphan removal")
+            return False
+
+        # Find and delete the orphan message
+        message_id = self.database.find_orphan_tool_result_message(
+            self.current_conversation_id,
+            orphan_tool_use_id
+        )
+
+        if message_id:
+            success = self.database.delete_message(message_id)
+            if success:
+                logging.info(f"Successfully deleted orphan tool_result message {message_id}")
+                # Refresh conversation history from database
+                self._refresh_conversation_history()
+                return True
+            else:
+                logging.error(f"Failed to delete orphan tool_result message {message_id}")
+                return False
+        else:
+            logging.warning(f"Could not find message containing orphan tool_use_id: {orphan_tool_use_id}")
+            return False
+
+    def _refresh_conversation_history(self):
+        """
+        Refresh the in-memory conversation history from the database.
+
+        Called after modifying messages (like deleting orphan tool_results).
+        """
+        if not self.current_conversation_id:
+            return
+
+        # Get fresh messages from database
+        messages = self.database.get_conversation_messages(
+            self.current_conversation_id,
+            include_rolled_up=False
+        )
+
+        # Clear and rebuild conversation history
+        self.conversation_history = []
+        for msg in messages:
+            self.conversation_history.append({
+                'role': msg['role'],
+                'content': msg['content'],
+                'timestamp': msg['timestamp']
+            })
+
+        logging.info(f"Refreshed conversation history: {len(self.conversation_history)} messages")
 
     def _check_and_perform_rollup(self):
         """
@@ -1906,6 +2021,14 @@ Current date and time: {datetime_str}"""
                     if retries_attempted > 0:
                         logging.error(f"Failed after {retries_attempted} retry attempt(s)")
 
+                    # Check for orphan tool_result error (from cancelled requests)
+                    if 'unexpected `tool_use_id`' in error_message or 'unexpected tool_use_id' in error_message:
+                        orphan_handled = self._handle_orphan_tool_result_error(error_message)
+                        if orphan_handled:
+                            # Orphan was removed, retry the request
+                            logging.info("Orphan tool_result removed, retrying request")
+                            continue  # Retry the current iteration
+
                     # Get suggestion based on error type
                     suggestion = self._get_error_suggestion(error_code, error_message)
 
@@ -1983,7 +2106,9 @@ Current date and time: {datetime_str}"""
             # Check if model wants to use tools
             content_blocks = response.get('content_blocks', [])
             stop_reason = response.get('stop_reason')
-            logging.debug(f"Model response: stop_reason={stop_reason}, content_blocks={len(content_blocks)}")
+            usage = response.get('usage', {})
+            output_tokens = usage.get('output_tokens', 0)
+            logging.info(f"Model response: stop_reason={stop_reason}, content_blocks={len(content_blocks)}, output_tokens={output_tokens}")
 
             # Check for tool use
             tool_uses = [block for block in content_blocks if block.get('type') == 'tool_use']
@@ -2012,6 +2137,13 @@ Current date and time: {datetime_str}"""
                     tool_name = tool_use.get('name')
                     tool_input = tool_use.get('input', {})
                     tool_id = tool_use.get('id')
+
+                    # Log tool input for debugging (truncate large inputs)
+                    tool_input_str = str(tool_input)
+                    if len(tool_input_str) > 500:
+                        logging.debug(f"Tool {tool_name} input (truncated): {tool_input_str[:500]}...")
+                    else:
+                        logging.debug(f"Tool {tool_name} input: {tool_input_str}")
 
                     # Check tool permission
                     permission_allowed = self.database.is_tool_allowed(self.current_conversation_id, tool_name)

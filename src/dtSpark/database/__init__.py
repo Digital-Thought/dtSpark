@@ -223,6 +223,18 @@ class ConversationDatabase:
                                     summarised_content, original_token_count, summarised_token_count,
                                     user_guid=self.user_guid)
 
+    def delete_message(self, message_id: int) -> bool:
+        """Delete a specific message."""
+        with self._conn_manager._lock:
+            return msg_module.delete_message(self.conn, message_id, user_guid=self.user_guid)
+
+    def find_orphan_tool_result_message(self, conversation_id: int, tool_use_id: str) -> Optional[int]:
+        """Find a message containing an orphan tool_result with the specified tool_use_id."""
+        with self._conn_manager._lock:
+            return msg_module.find_orphan_tool_result_message(
+                self.conn, conversation_id, tool_use_id, user_guid=self.user_guid
+            )
+
     # File operations
     def add_file(self, conversation_id: int, filename: str, file_type: str, file_size: int,
                 content_text: Optional[str] = None, content_base64: Optional[str] = None,

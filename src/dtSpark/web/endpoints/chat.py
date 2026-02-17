@@ -832,6 +832,65 @@ async def respond_to_permission_request(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/chat/{conversation_id}/command/conflict-response")
+async def submit_conflict_response(
+    request: Request,
+    conversation_id: int,
+    request_id: str = Form(...),
+    remove_orphan: bool = Form(...),
+    session_id: str = Depends(get_current_session),
+):
+    """
+    Submit a response to a conflict resolution request (orphan tool_result).
+
+    This is called when the user decides whether to remove an orphan tool_result
+    that was left behind by a cancelled request.
+
+    Args:
+        request: FastAPI request
+        conversation_id: ID of the conversation
+        request_id: The conflict request ID
+        remove_orphan: True to remove the orphan, False to cancel
+        session_id: Current session ID
+
+    Returns:
+        CommandResponse confirming the action
+    """
+    try:
+        app_instance = request.app.state.app_instance
+        conversation_manager = app_instance.conversation_manager
+
+        # Submit the response
+        if hasattr(conversation_manager, 'web_interface') and conversation_manager.web_interface:
+            success = conversation_manager.web_interface.submit_conflict_response(
+                request_id, remove_orphan
+            )
+            if not success:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Conflict request not found or already processed"
+                )
+        else:
+            raise HTTPException(status_code=500, detail="Web interface not available")
+
+        action = "removed" if remove_orphan else "kept"
+        return CommandResponse(
+            command="conflict-response",
+            status="success",
+            message=f"Conflict resolved: orphan tool result {action}",
+            data={
+                "request_id": request_id,
+                "remove_orphan": remove_orphan,
+            },
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error submitting conflict response: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/chat/{conversation_id}/command/compaction")
 async def get_compaction_settings(
     request: Request,

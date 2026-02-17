@@ -274,3 +274,111 @@ class WebInterface:
     def clear_compaction_status(self):
         """Clear any pending compaction status."""
         self._compaction_status = None
+
+    # Conflict resolution for orphan tool results
+    def prompt_conflict_resolution(self, tool_use_id: str, error_message: str) -> bool:
+        """
+        Request user confirmation to remove orphan tool_result from history.
+
+        This happens when a request was cancelled mid-tool-execution, leaving
+        a tool_result without its corresponding tool_use block.
+
+        Args:
+            tool_use_id: The orphan tool_use_id that has no matching tool_use
+            error_message: The original error message from the API
+
+        Returns:
+            True if user confirms removal, False otherwise
+        """
+        import time
+
+        # Generate unique request ID
+        request_id = str(uuid.uuid4())
+
+        # Store the conflict resolution request
+        if not hasattr(self, '_conflict_requests'):
+            self._conflict_requests = {}
+        if not hasattr(self, '_conflict_responses'):
+            self._conflict_responses = {}
+
+        self._conflict_requests[request_id] = {
+            'tool_use_id': tool_use_id,
+            'error_message': error_message,
+            'status': 'pending'
+        }
+
+        self._pending_conflict_request_id = request_id
+
+        logger.info(f"Conflict resolution request created: {request_id} for tool_use_id: {tool_use_id}")
+
+        # Wait for response (with timeout)
+        timeout_seconds = 300  # 5 minutes timeout
+        poll_interval = 0.5
+        elapsed = 0
+
+        while elapsed < timeout_seconds:
+            if request_id in self._conflict_responses:
+                response = self._conflict_responses[request_id]
+
+                # Clean up
+                del self._conflict_requests[request_id]
+                del self._conflict_responses[request_id]
+                if getattr(self, '_pending_conflict_request_id', None) == request_id:
+                    self._pending_conflict_request_id = None
+
+                logger.info(f"Conflict resolution response received for {request_id}: {response}")
+                return response
+
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+
+        # Timeout - default to no action
+        logger.warning(f"Conflict resolution request {request_id} timed out")
+        if request_id in self._conflict_requests:
+            del self._conflict_requests[request_id]
+        if getattr(self, '_pending_conflict_request_id', None) == request_id:
+            self._pending_conflict_request_id = None
+
+        return False
+
+    def get_pending_conflict_request(self) -> Optional[Dict]:
+        """
+        Get the current pending conflict resolution request if any.
+
+        Returns:
+            Dictionary with request details, or None
+        """
+        request_id = getattr(self, '_pending_conflict_request_id', None)
+        requests = getattr(self, '_conflict_requests', {})
+
+        if request_id and request_id in requests:
+            return {
+                'request_id': request_id,
+                **requests[request_id]
+            }
+        return None
+
+    def submit_conflict_response(self, request_id: str, remove_orphan: bool) -> bool:
+        """
+        Submit a response to a pending conflict resolution request.
+
+        Args:
+            request_id: The request ID
+            remove_orphan: True to remove the orphan tool_result, False to cancel
+
+        Returns:
+            True if response was accepted, False if request not found
+        """
+        requests = getattr(self, '_conflict_requests', {})
+        if request_id not in requests:
+            logger.warning("Conflict response submitted for unknown request")
+            return False
+
+        if not hasattr(self, '_conflict_responses'):
+            self._conflict_responses = {}
+
+        self._conflict_responses[request_id] = remove_orphan
+        requests[request_id]['status'] = 'responded'
+
+        logger.info(f"Conflict response submitted: remove_orphan={remove_orphan}")
+        return True

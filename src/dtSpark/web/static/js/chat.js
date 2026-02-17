@@ -1130,6 +1130,116 @@ async function showSecurityWarningDialog(requestId, severity, issues, explanatio
 }
 
 /**
+ * Show conflict resolution dialog for orphan tool_result messages
+ * @param {string} requestId - The conflict request ID
+ * @param {string} toolUseId - The orphan tool_use_id
+ * @param {string} errorMessage - The error message from the API
+ * @param {number} conversationId - The conversation ID
+ */
+async function showConflictResolutionDialog(requestId, toolUseId, errorMessage, conversationId) {
+    // Create modal HTML
+    const modalHtml = `
+        <div class="modal fade" id="conflictResolutionModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+            <div class="modal-dialog modal-dialog-centered modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title">
+                            <i class="bi bi-exclamation-triangle-fill"></i> Message Sync Issue Detected
+                        </h5>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert alert-warning mb-3">
+                            <strong>A tool response in your conversation history is out of sync.</strong>
+                        </div>
+                        <p class="mb-3">
+                            This typically occurs when a request was cancelled mid-execution. The conversation
+                            contains a tool result that no longer has a matching tool call.
+                        </p>
+                        <div class="mb-3">
+                            <strong>Technical Details:</strong>
+                            <div class="bg-light p-2 rounded mt-2">
+                                <code class="text-break">${escapeHtml(toolUseId)}</code>
+                            </div>
+                        </div>
+                        <p class="mb-2"><strong>Would you like to remove this orphaned message?</strong></p>
+                        <p class="text-muted small mb-3">
+                            Removing it will allow the conversation to continue normally.
+                            The assistant will retry the current request after removal.
+                        </p>
+                        <div class="d-grid gap-2">
+                            <button type="button" class="btn btn-success conflict-btn" data-remove="true">
+                                <i class="bi bi-trash"></i> Remove orphaned message and continue
+                            </button>
+                            <button type="button" class="btn btn-secondary conflict-btn" data-remove="false">
+                                <i class="bi bi-x-circle"></i> Keep message and cancel request
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Remove existing modal if present
+    const existingModal = document.getElementById('conflictResolutionModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    // Add modal to DOM
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // Get modal element
+    const modalElement = document.getElementById('conflictResolutionModal');
+    const modal = new bootstrap.Modal(modalElement);
+
+    // Add click handlers to buttons
+    const buttons = modalElement.querySelectorAll('.conflict-btn');
+    buttons.forEach(button => {
+        button.addEventListener('click', async () => {
+            const removeOrphan = button.dataset.remove === 'true';
+
+            // Send response to server
+            try {
+                const formData = new FormData();
+                formData.append('request_id', requestId);
+                formData.append('remove_orphan', removeOrphan);
+
+                const result = await fetch(`/api/chat/${conversationId}/command/conflict-response`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!result.ok) {
+                    console.error('Failed to submit conflict response:', result.statusText);
+                    showToast('Failed to submit conflict response', 'error');
+                } else {
+                    if (removeOrphan) {
+                        showToast('Orphaned message removed. Retrying request...', 'success');
+                    } else {
+                        showToast('Request cancelled. Conversation history preserved.', 'info');
+                    }
+                }
+            } catch (error) {
+                console.error('Error submitting conflict response:', error);
+                showToast('Error submitting conflict response', 'error');
+            }
+
+            // Close modal
+            modal.hide();
+        });
+    });
+
+    // Clean up modal after it's hidden
+    modalElement.addEventListener('hidden.bs.modal', () => {
+        modalElement.remove();
+    });
+
+    // Show modal
+    modal.show();
+}
+
+/**
  * Copy message content to clipboard
  * @param {string} content - The message content to copy
  * @param {HTMLElement} button - The copy button element

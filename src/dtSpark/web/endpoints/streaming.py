@@ -152,6 +152,22 @@ class StreamingManager:
                             }),
                         }
 
+                    # Check for conflict resolution requests (orphan tool_results)
+                    conflict_request = conversation_manager.web_interface.get_pending_conflict_request()
+                    if conflict_request:
+                        request_id = conflict_request['request_id']
+                        if request_id not in emitted_permission_requests:  # Reuse this set to track
+                            emitted_permission_requests.add(request_id)
+                            yield {
+                                "event": "conflict_resolution",
+                                "data": json.dumps({
+                                    "request_id": request_id,
+                                    "tool_use_id": conflict_request.get('tool_use_id'),
+                                    "error_message": conflict_request.get('error_message'),
+                                    "conversation_id": conversation_id,
+                                }),
+                            }
+
                 # Check for new messages
                 try:
                     current_messages = database.get_conversation_messages(conversation_id)

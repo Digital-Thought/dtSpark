@@ -169,6 +169,14 @@ async function sendMessageWithSSE(conversationId, message, webSearchActive = fal
                 showCompactionStatus(data.status, data.message, data);
             });
 
+            eventSource.addEventListener('conflict_resolution', (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Conflict resolution request received:', data);
+
+                // Show conflict resolution modal/dialog
+                showConflictResolutionDialog(data.request_id, data.tool_use_id, data.error_message, data.conversation_id);
+            });
+
             eventSource.addEventListener('progress', (event) => {
                 const data = JSON.parse(event.data);
                 // Update progress (if we want to show a progress bar)
