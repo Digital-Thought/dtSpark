@@ -88,7 +88,8 @@ async def get_chat_history(
         conversation_manager.update_service(app_instance.bedrock_service)
 
         # Get conversation history from conversation manager
-        history = conversation_manager.get_conversation_history(include_rolled_up=False)
+        # Include rolled-up messages so users can see full history after compaction
+        history = conversation_manager.get_conversation_history(include_rolled_up=True)
 
         # Format messages
         messages = []
