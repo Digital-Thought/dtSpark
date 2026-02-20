@@ -130,6 +130,29 @@ class ConversationManager:
 
         logging.info(f"ConversationManager service updated: {old_provider} -> {new_provider}")
 
+    def _get_model_max_output(self) -> Optional[int]:
+        """
+        Get the maximum output tokens for the current model.
+
+        Returns:
+            Maximum output tokens, or None if not available
+        """
+        try:
+            if hasattr(self.bedrock_service, 'get_model_max_tokens'):
+                return self.bedrock_service.get_model_max_tokens(
+                    self.bedrock_service.current_model_id
+                )
+            elif hasattr(self.bedrock_service, 'current_model_id'):
+                # For providers without get_model_max_tokens, check MODEL_SPECS
+                if hasattr(self.bedrock_service, 'MODEL_SPECS'):
+                    model_id = self.bedrock_service.current_model_id
+                    for pattern, spec in self.bedrock_service.MODEL_SPECS.items():
+                        if pattern in model_id:
+                            return spec.get('max_output')
+        except Exception as e:
+            logging.debug(f"Could not get model max output: {e}")
+        return None
+
     def get_embedded_tools(self) -> List[Dict[str, Any]]:
         """
         Get embedded/built-in tools in toolSpec format for the web UI.
@@ -231,15 +254,21 @@ class ConversationManager:
             self.current_conversation_id = conversation_id
             self.current_instructions = conversation.get('instructions')
 
-            # Load conversation-specific max_tokens if set (otherwise use global default)
+            # Load conversation-specific max_tokens if set (otherwise use model's max capability)
             conversation_max_tokens = conversation.get('max_tokens')
             if conversation_max_tokens is not None:
                 self.max_tokens = conversation_max_tokens
                 logging.info(f"Using conversation-specific max_tokens: {conversation_max_tokens}")
             else:
-                # Reset to global default (in case previous conversation had custom value)
-                self.max_tokens = self.default_max_tokens
-                logging.info(f"Using global default max_tokens: {self.default_max_tokens}")
+                # Use the model's max output capability instead of a static default
+                # This ensures we don't artificially limit output when the model can do more
+                model_max_output = self._get_model_max_output()
+                if model_max_output and model_max_output > self.default_max_tokens:
+                    self.max_tokens = model_max_output
+                    logging.info(f"Using model's max output capability: {model_max_output}")
+                else:
+                    self.max_tokens = self.default_max_tokens
+                    logging.info(f"Using global default max_tokens: {self.default_max_tokens}")
 
             # Load conversation-specific compaction settings (reset to defaults first)
             self.context_compactor.reset_to_defaults()
@@ -292,7 +321,7 @@ class ConversationManager:
         Get the web search configuration for the current request.
 
         Returns web search config dict if web search should be used,
-        None otherwise.
+        None otherwise. Configuration is provider-specific.
 
         Returns:
             Web search configuration dict or None
@@ -300,7 +329,25 @@ class ConversationManager:
         if not self.web_search_enabled or not self._web_search_active:
             return None
 
-        # Build web search config from application config
+        # Determine current provider
+        provider_name = ''
+        if self.bedrock_service:
+            provider_name = self.bedrock_service.get_provider_name().lower()
+
+        # Google Gemini web search (grounding)
+        if 'gemini' in provider_name:
+            return self._get_gemini_web_search_config()
+
+        # Anthropic web search (default)
+        return self._get_anthropic_web_search_config()
+
+    def _get_anthropic_web_search_config(self) -> Dict[str, Any]:
+        """
+        Get Anthropic-specific web search configuration.
+
+        Returns:
+            Anthropic web search configuration dict
+        """
         web_search_config = {
             'enabled': True,
             'max_uses': 5  # Default
@@ -321,6 +368,28 @@ class ConversationManager:
                     web_search_config['user_location'] = {
                         k: v for k, v in loc.items() if v
                     }
+
+        return web_search_config
+
+    def _get_gemini_web_search_config(self) -> Dict[str, Any]:
+        """
+        Get Google Gemini-specific web search (grounding) configuration.
+
+        Returns:
+            Gemini web search configuration dict
+        """
+        web_search_config = {
+            'enabled': True,
+            'dynamic_threshold': 0.3  # Default
+        }
+
+        # Get settings from config if available
+        if self.config:
+            ws_config = self.config.get('llm_providers', {}).get('google_gemini', {}).get('web_search', {})
+            if ws_config.get('exclude_domains'):
+                web_search_config['exclude_domains'] = ws_config['exclude_domains']
+            if ws_config.get('dynamic_threshold') is not None:
+                web_search_config['dynamic_threshold'] = ws_config['dynamic_threshold']
 
         return web_search_config
 

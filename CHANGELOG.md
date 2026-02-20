@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a28] - 2026-02-20
+
+### Added
+- **Google Gemini LLM Provider** - Full integration with Google's Gemini API
+  - Support for Gemini 3, 2.5, 2.0, and 1.5 model series
+  - Up to 1M token context window (2M for Gemini 1.5 Pro)
+  - Up to 65K output tokens (Gemini 2.5+)
+  - Full function calling (tool use) support
+  - Rate limit handling with exponential backoff
+  - Token counting via Gemini API
+
+- **Google Search Grounding** - Web search capability for Gemini models
+  - Hierarchical control: global config, conversation-level, per-request toggle
+  - `GoogleSearch` API for Gemini 2.0+ models with `exclude_domains` support
+  - `GoogleSearchRetrieval` API for Gemini 1.5 models with `dynamic_threshold` support
+  - Grounding metadata extraction (search queries, sources, text supports)
+  - Same UI controls as Anthropic web search (globe toggle button)
+
+- **Setup Wizard Support** - Google Gemini configuration in `--setup` wizard
+  - Provider selection for Google Gemini
+  - Secure API key storage via secrets.yaml
+  - Web search grounding enable/disable option
+
+### Changed
+- Updated provider priority order: AWS Bedrock → Anthropic → Google Gemini → Ollama
+- Context limit resolver now includes Gemini model defaults
+
+### Documentation
+- Added Google Gemini to all documentation files
+- New "Web Search (Google Gemini)" section in features.md
+- Updated configuration.md with Gemini web search settings
+- Updated installation.md with Gemini setup instructions
+- Updated web-interface.md and cli-reference.md for Gemini web search
+
+---
+
 ## [1.1.0a25] - 2026-02-16
 
 ### Fixed

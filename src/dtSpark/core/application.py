@@ -499,8 +499,8 @@ class AWSBedrockCLI(AbstractApp):
                 try:
                     api_key = self._get_nested_setting('llm_providers.anthropic.api_key', '')
 
-                    # Get default max_tokens from bedrock config
-                    default_max_tokens = self.settings.get('bedrock.max_tokens', 8192)
+                    # Get default max_tokens (prefer llm.max_tokens, fall back to bedrock.max_tokens)
+                    default_max_tokens = self.settings.get('llm.max_tokens') or self.settings.get('bedrock.max_tokens', 16384)
 
                     # Get rate limit configuration
                     rate_limit_max_retries = self._get_nested_setting('llm_providers.anthropic.rate_limit_max_retries', 5)
@@ -525,7 +525,45 @@ class AWSBedrockCLI(AbstractApp):
                 except Exception as e:
                     logging.error(f"Failed to initialise Anthropic: {e}")
 
-            progress.update(task_llm, advance=30)
+            progress.update(task_llm, advance=20)
+
+            # Initialise Google Gemini provider (if enabled)
+            google_enabled = self._get_nested_setting('llm_providers.google_gemini.enabled', False)
+            if google_enabled:
+                try:
+                    from dtSpark.llm.google_gemini import GoogleGeminiService
+
+                    google_api_key = self._get_nested_setting('llm_providers.google_gemini.api_key', '')
+
+                    # Get default max_tokens
+                    google_max_tokens = self.settings.get('llm.max_tokens') or self.settings.get('bedrock.max_tokens', 16384)
+
+                    # Get rate limit configuration
+                    google_rate_limit_retries = self._get_nested_setting('llm_providers.google_gemini.rate_limit_max_retries', 5)
+                    google_rate_limit_delay = self._get_nested_setting('llm_providers.google_gemini.rate_limit_base_delay', 2.0)
+
+                    # Allow empty API key if environment variable is set
+                    if not google_api_key:
+                        google_api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
+
+                    if google_api_key:
+                        google_service = GoogleGeminiService(
+                            api_key=google_api_key,
+                            default_max_tokens=google_max_tokens,
+                            rate_limit_max_retries=google_rate_limit_retries,
+                            rate_limit_base_delay=google_rate_limit_delay
+                        )
+                        self.llm_manager.register_provider(google_service)
+                        provider_count += 1
+                        logging.info("Google Gemini API provider registered")
+                    else:
+                        logging.warning("Google Gemini enabled but no API key provided")
+                except ImportError as e:
+                    logging.warning(f"Google Gemini not available (missing google-genai package): {e}")
+                except Exception as e:
+                    logging.error(f"Failed to initialise Google Gemini: {e}")
+
+            progress.update(task_llm, advance=10)
 
             # Verify at least one provider is available
             if provider_count == 0:
@@ -688,7 +726,8 @@ class AWSBedrockCLI(AbstractApp):
 
             # Task 6: Initialise conversation manager
             task_conv = progress.add_task("[cyan]Initialising conversation manager...", total=100)
-            max_tokens = self.settings.get('bedrock.max_tokens', 4096)
+            # Use llm.max_tokens if set, otherwise fall back to bedrock.max_tokens for backwards compatibility
+            max_tokens = self.settings.get('llm.max_tokens') or self.settings.get('bedrock.max_tokens', 16384)
             rollup_threshold = self.settings.get('conversation.rollup_threshold', 0.8)
             rollup_summary_ratio = self.settings.get('conversation.rollup_summary_ratio', 0.3)
             max_tool_result_tokens = self.settings.get('conversation.max_tool_result_tokens', 10000)
@@ -1308,7 +1347,7 @@ class AWSBedrockCLI(AbstractApp):
         cli.console.print(Panel(
             "[bold cyan]Setup Wizard[/bold cyan]\n\n"
             "This wizard will guide you through configuring:\n"
-            "  • LLM Providers (AWS Bedrock, Ollama, Anthropic API)\n"
+            "  • LLM Providers (AWS Bedrock, Ollama, Anthropic API, Google Gemini)\n"
             "  • Database (SQLite, MySQL, PostgreSQL, MSSQL)\n"
             "  • Interface (CLI or Web)\n"
             "  • Additional Features\n\n"
@@ -1366,8 +1405,11 @@ class AWSBedrockCLI(AbstractApp):
         # Anthropic Direct API
         use_anthropic = Confirm.ask("Do you wish to use Anthropic Direct API?", default=False)
 
+        # Google Gemini
+        use_google_gemini = Confirm.ask("Do you wish to use Google Gemini?", default=False)
+
         # Ensure at least one provider is selected
-        if not (use_aws_bedrock or use_ollama or use_anthropic):
+        if not (use_aws_bedrock or use_ollama or use_anthropic or use_google_gemini):
             cli.print_error("You must enable at least one LLM provider!")
             cli.print_info("Setup cancelled.")
             return
@@ -1537,6 +1579,45 @@ class AWSBedrockCLI(AbstractApp):
             )
         else:
             enable_web_search = False
+
+        # ═══════════════════════════════════════════════════════════════
+        # Google Gemini Configuration
+        # ═══════════════════════════════════════════════════════════════
+        google_api_key = ""
+
+        if use_google_gemini:
+            cli.console.print()
+            cli.print_separator("═")
+            cli.console.print("[bold]Google Gemini Configuration[/bold]")
+            cli.print_separator("═")
+            cli.console.print()
+
+            google_api_key_input = Prompt.ask(
+                "Google API key (or press Enter to set via environment variable later)",
+                default="",
+                password=True
+            )
+
+            # Store API key in secrets.yaml if provided
+            if google_api_key_input:
+                secrets_to_store.append({"name": "google_api_key", "value": google_api_key_input})
+                google_api_key = "SEC/google_api_key"
+            else:
+                google_api_key = ""
+
+            cli.console.print()
+            cli.console.print("[dim]You can also set GEMINI_API_KEY or GOOGLE_API_KEY environment variable.[/dim]")
+
+            # Web search (grounding) option
+            cli.console.print()
+            cli.console.print("[dim]Google Search grounding allows the AI to search the web for current information.[/dim]")
+            cli.console.print("[dim]Pricing: Per search query (Gemini 2.0+) or per prompt (Gemini 1.5).[/dim]")
+            enable_gemini_web_search = Confirm.ask(
+                "Enable Google Search grounding capability for Gemini models?",
+                default=False
+            )
+        else:
+            enable_gemini_web_search = False
 
         # ═══════════════════════════════════════════════════════════════
         # Database Configuration
@@ -1906,16 +1987,18 @@ class AWSBedrockCLI(AbstractApp):
                     llm_provider_choices = {
                         "1": "AWS Bedrock",
                         "2": "Ollama",
-                        "3": "Anthropic Direct"
+                        "3": "Anthropic Direct",
+                        "4": "Google Gemini"
                     }
                     cli.console.print()
                     cli.console.print("  [1] AWS Bedrock [default]")
                     cli.console.print("  [2] Ollama")
                     cli.console.print("  [3] Anthropic Direct")
+                    cli.console.print("  [4] Google Gemini")
                     cli.console.print()
                     llm_provider_choice = Prompt.ask(
                         "Select provider for LLM inspection",
-                        choices=["1", "2", "3"],
+                        choices=["1", "2", "3", "4"],
                         default="1"
                     )
                     llm_inspection_provider = llm_provider_choices[llm_provider_choice]
@@ -2151,6 +2234,32 @@ class AWSBedrockCLI(AbstractApp):
                     r'(web_search:\s*\n\s+enabled:\s+)(true|false)',
                     f'\\g<1>{str(enable_web_search).lower()}',
                     config_content
+                )
+
+            # Google Gemini settings
+            config_content = re.sub(
+                r'(google_gemini:\s*\n\s+enabled:\s+)(true|false)',
+                f'\\g<1>{str(use_google_gemini).lower()}',
+                config_content
+            )
+
+            # Google Gemini API key - update api_key under google_gemini section
+            if use_google_gemini and google_api_key:
+                config_content = re.sub(
+                    r'(google_gemini:\s*\n\s+enabled:\s+(?:true|false)\s*#[^\n]*\n\s+api_key:\s+)[^\s#]+',
+                    f'\\g<1>{google_api_key}',
+                    config_content
+                )
+
+            # Google Gemini web search (grounding) setting
+            # Note: Must be specific to google_gemini section to avoid matching anthropic's web_search
+            if use_google_gemini:
+                # Find the google_gemini web_search section and update enabled
+                config_content = re.sub(
+                    r'(google_gemini:.*?web_search:\s*\n\s+enabled:\s+)(true|false)',
+                    f'\\g<1>{str(enable_gemini_web_search).lower()}',
+                    config_content,
+                    flags=re.DOTALL
                 )
 
             # Interface settings

@@ -19,6 +19,7 @@ Depending on which LLM providers you want to use:
 |----------|-------------|
 | AWS Bedrock | AWS account with Bedrock access, AWS CLI configured |
 | Anthropic API | Anthropic API key |
+| Google Gemini | Google API key (from AI Studio) |
 | Ollama | Ollama server running locally or on network |
 
 ## Installation Methods
@@ -89,8 +90,11 @@ flowchart TD
     OLLAMA -->|No| ANTHROPIC
     OLLAMA_CFG --> ANTHROPIC{Use Anthropic<br/>Direct?}
     ANTHROPIC -->|Yes| ANTHROPIC_CFG[Enter API Key]
-    ANTHROPIC -->|No| DATABASE
-    ANTHROPIC_CFG --> DATABASE
+    ANTHROPIC -->|No| GEMINI
+    ANTHROPIC_CFG --> GEMINI{Use Google<br/>Gemini?}
+    GEMINI -->|Yes| GEMINI_CFG[Enter API Key]
+    GEMINI -->|No| DATABASE
+    GEMINI_CFG --> DATABASE
 
     DATABASE[Database Selection]
     DATABASE --> DB_TYPE{Select Type}
@@ -121,6 +125,7 @@ flowchart TD
    - AWS Bedrock (profile, region, cost tracking)
    - Ollama (server URL)
    - Anthropic Direct API (API key securely stored)
+   - Google Gemini (API key securely stored)
 
 2. **Database**
    - SQLite (default, no configuration needed)
@@ -183,6 +188,26 @@ The configuration file location:
 2. **Configure in Spark**:
    - Run `spark --setup` and enter the key when prompted
    - Or set environment variable: `ANTHROPIC_API_KEY=sk-ant-...`
+
+### Google Gemini Setup
+
+1. **Get API Key**:
+   - Visit [Google AI Studio](https://aistudio.google.com/apikey)
+   - Create an API key
+
+2. **Install Optional Package** (if not already installed):
+   ```bash
+   pip install google-genai
+   ```
+
+3. **Configure in Spark**:
+   - Run `spark --setup` and enter the key when prompted
+   - Or set environment variable: `GEMINI_API_KEY=your-key` or `GOOGLE_API_KEY=your-key`
+
+4. **Optional: Enable Web Search (Grounding)**:
+   - During setup, enable "Google Search grounding capability"
+   - Allows Gemini to search the web for current information
+   - Pricing: Per search query (2.0+) or per prompt (1.5)
 
 ### Ollama Setup
 

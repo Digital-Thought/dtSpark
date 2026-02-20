@@ -44,6 +44,19 @@ HARDCODED_MODEL_DEFAULTS = {
         'codellama': {'context_window': 16000, 'max_output': 4096},
         'default': {'context_window': 8192, 'max_output': 4096},
     },
+    'google_gemini': {
+        # Gemini 3 series - 1M context, 64K output
+        'gemini-3': {'context_window': 1000000, 'max_output': 65536},
+        'gemini-3.1': {'context_window': 1000000, 'max_output': 65536},
+        # Gemini 2.5 series - 1M context, 64K output
+        'gemini-2.5': {'context_window': 1000000, 'max_output': 65536},
+        # Gemini 2.0 series - 1M context, 8K output
+        'gemini-2.0': {'context_window': 1000000, 'max_output': 8192},
+        # Gemini 1.5 series - up to 2M context
+        'gemini-1.5-pro': {'context_window': 2000000, 'max_output': 8192},
+        'gemini-1.5': {'context_window': 1000000, 'max_output': 8192},
+        'default': {'context_window': 1000000, 'max_output': 8192},
+    },
 }
 
 
@@ -101,7 +114,7 @@ class ContextLimitResolver:
         limits_config = {}
 
         # Define known providers and model patterns to check
-        providers = ['anthropic', 'aws_bedrock', 'ollama']
+        providers = ['anthropic', 'aws_bedrock', 'ollama', 'google_gemini']
         known_models = {
             'anthropic': [
                 'claude-opus-4', 'claude-sonnet-4', 'claude-opus-4.5', 'claude-sonnet-4.5',
@@ -114,6 +127,10 @@ class ContextLimitResolver:
             ],
             'ollama': [
                 'llama3.2', 'mistral', 'codellama', 'default'
+            ],
+            'google_gemini': [
+                'gemini-3-pro', 'gemini-3-flash', 'gemini-2.5-pro', 'gemini-2.5-flash',
+                'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'default'
             ]
         }
 
@@ -238,6 +255,9 @@ class ContextLimitResolver:
             'aws_bedrock': 'aws_bedrock',
             'bedrock': 'aws_bedrock',
             'ollama': 'ollama',
+            'google gemini': 'google_gemini',
+            'google_gemini': 'google_gemini',
+            'gemini': 'google_gemini',
         }
 
         normalised = provider_map.get(provider_lower, provider_lower)

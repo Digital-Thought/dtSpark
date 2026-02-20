@@ -185,14 +185,18 @@ Browse and select existing conversations:
 
 ### Web Search Toggle
 
-For conversations with web search enabled (Anthropic models only), a globe button (🌐) appears next to the send button:
+For conversations with web search enabled (Anthropic or Google Gemini models), a globe button (🌐) appears next to the send button:
 
 | State | Appearance | Behaviour |
 |-------|------------|-----------|
 | **ON** (default) | Solid blue button | Web search included in request |
 | **OFF** | Outline grey button | Web search excluded |
 
-Click the button to toggle web search for individual messages. This allows you to control when the AI searches the web, which incurs a cost of $0.01 per search.
+Click the button to toggle web search for individual messages. This allows you to control when the AI searches the web.
+
+**Pricing:**
+- **Anthropic**: $0.01 per search
+- **Google Gemini**: Per search query (2.0+) or per prompt (1.5)
 
 ### Message Types
 
@@ -303,7 +307,7 @@ When creating a new conversation, you configure:
 
 1. **Conversation Name** - Descriptive name for the chat
 2. **Model Selection** - Choose from available LLM models
-3. **Web Search** (Anthropic models only) - Enable web search capability
+3. **Web Search** (Anthropic or Google Gemini models) - Enable web search capability
 4. **Instructions** - Optional system prompt
 5. **File Attachments** - Optional files to include
 
@@ -332,8 +336,8 @@ When selecting an Anthropic model and web search is globally enabled, a checkbox
 ```
 
 **Note**: The web search checkbox only appears when:
-- Web search is globally enabled in configuration
-- An Anthropic Direct model is selected
+- Web search is globally enabled in configuration (for the relevant provider)
+- An Anthropic Direct or Google Gemini model is selected
 
 ---
 

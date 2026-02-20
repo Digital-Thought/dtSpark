@@ -8,6 +8,7 @@ Spark provides a unified interface to interact with large language models from m
 
 - **AWS Bedrock** - Access Claude, Llama, Mistral, Cohere, Titan, and other models through AWS
 - **Anthropic Direct API** - Direct access to Claude models without AWS infrastructure, with optional web search
+- **Google Gemini** - Access Google's Gemini models with up to 1M token context, tool support, and optional web search
 - **Ollama** - Run open-source models locally for privacy and offline use
 
 ## Key Capabilities
@@ -18,6 +19,8 @@ mindmap
     LLM Providers
       AWS Bedrock
       Anthropic API
+        Web Search
+      Google Gemini
         Web Search
       Ollama Local
     Interfaces
@@ -130,6 +133,7 @@ graph TB
         LLM_MGR[LLM Manager]
         BEDROCK[AWS Bedrock<br/>Provider]
         ANTHROPIC[Anthropic Direct<br/>Provider]
+        GEMINI[Google Gemini<br/>Provider]
         OLLAMA[Ollama<br/>Provider]
     end
 
@@ -160,6 +164,7 @@ graph TB
     CM --> LLM_MGR
     LLM_MGR --> BEDROCK
     LLM_MGR --> ANTHROPIC
+    LLM_MGR --> GEMINI
     LLM_MGR --> OLLAMA
     CM --> MCP_MGR
     MCP_MGR --> TOOL_SEL

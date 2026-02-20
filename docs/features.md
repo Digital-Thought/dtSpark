@@ -6,22 +6,23 @@ Comprehensive documentation of all Spark features.
 
 1. [Multi-Provider LLM Support](#multi-provider-llm-support)
 2. [Web Search (Anthropic)](#web-search-anthropic)
-3. [Conversation Management](#conversation-management)
-4. [Intelligent Context Compaction](#intelligent-context-compaction)
-5. [Tool Integration](#tool-integration)
-6. [Built-in Filesystem Tools](#built-in-filesystem-tools)
-7. [Tool Approval Process](#tool-approval-process)
-8. [MCP Audit Logging](#mcp-audit-logging)
-9. [Database Support & Multi-User](#database-support--multi-user)
-10. [Conversation Export](#conversation-export)
-11. [Prompt Security Inspection](#prompt-security-inspection)
-12. [Autonomous Actions](#autonomous-actions)
+3. [Web Search (Google Gemini)](#web-search-google-gemini)
+4. [Conversation Management](#conversation-management)
+5. [Intelligent Context Compaction](#intelligent-context-compaction)
+6. [Tool Integration](#tool-integration)
+7. [Built-in Filesystem Tools](#built-in-filesystem-tools)
+8. [Tool Approval Process](#tool-approval-process)
+9. [MCP Audit Logging](#mcp-audit-logging)
+10. [Database Support & Multi-User](#database-support--multi-user)
+11. [Conversation Export](#conversation-export)
+12. [Prompt Security Inspection](#prompt-security-inspection)
+13. [Autonomous Actions](#autonomous-actions)
 
 ---
 
 ## Multi-Provider LLM Support
 
-Spark supports three LLM providers that can be used individually or together:
+Spark supports four LLM providers that can be used individually or together:
 
 ```mermaid
 graph TB
@@ -41,6 +42,10 @@ graph TB
         CLAUDE_A[Claude Models]
     end
 
+    subgraph "Google Gemini"
+        GEMINI[Gemini Models<br/>3 Pro/Flash, 2.5, 2.0, 1.5]
+    end
+
     subgraph "Ollama Local"
         LOCAL[Local Models<br/>Llama, Mistral, Qwen, etc.]
     end
@@ -51,6 +56,7 @@ graph TB
     SELECT --> TITAN
     SELECT --> COHERE
     SELECT --> CLAUDE_A
+    SELECT --> GEMINI
     SELECT --> LOCAL
 ```
 
@@ -65,6 +71,14 @@ graph TB
 - Requires Anthropic API key
 - Includes rate limit handling with exponential backoff
 - Default tier: 30,000 input tokens/minute (large requests auto-detected and skipped)
+
+### Google Gemini
+- Access to Google's Gemini models (3 Pro/Flash, 2.5 Pro/Flash, 2.0 Flash, 1.5 Pro/Flash)
+- Up to 1 million token context window (2M for Gemini 1.5 Pro)
+- Up to 65,536 output tokens (Gemini 2.5+)
+- Full function calling (tool use) support
+- Requires Google API key
+- Includes rate limit handling with exponential backoff
 
 ### Ollama
 - Run models locally for privacy
@@ -223,6 +237,53 @@ The LLM decides when and how often to search based on the user's query. The `max
 - **Technical Documentation**: Latest API references, framework docs
 - **Research**: Academic papers, industry reports
 - **Fact-Checking**: Verify claims with current sources
+
+---
+
+## Web Search (Google Gemini)
+
+Google Gemini models can access real-time web information through **Google Search Grounding**, similar to Anthropic's web search capability.
+
+### Overview
+
+The same hierarchical control system applies:
+1. **Global Config** - Enable via `google_gemini.web_search.enabled`
+2. **Conversation** - Enable per-conversation when creating
+3. **Per-Request** - Toggle button in chat UI
+
+### Configuration
+
+```yaml
+google_gemini:
+  web_search:
+    enabled: true                # Master switch
+    exclude_domains: []          # Domains to exclude from results
+    dynamic_threshold: 0.3       # Gemini 1.5 only: trigger threshold
+```
+
+### Model-Specific Behaviour
+
+| Model Series | API | Pricing | Dynamic Threshold |
+|--------------|-----|---------|-------------------|
+| **Gemini 2.0+** | `GoogleSearch` | Per search query | Not supported |
+| **Gemini 1.5** | `GoogleSearchRetrieval` | Per prompt | Supported (0.0-1.0) |
+
+### Key Differences from Anthropic
+
+| Feature | Anthropic | Google Gemini |
+|---------|-----------|---------------|
+| Domain whitelist | Yes (`allowed_domains`) | No |
+| Domain blacklist | Yes (`blocked_domains`) | Yes (`exclude_domains`) |
+| Max uses control | Yes (`max_uses`) | No (model decides) |
+| Location settings | city/region/country | Not supported |
+| Search triggering | Always when enabled | Dynamic threshold (1.5 only) |
+
+### Grounding Metadata
+
+Gemini returns rich grounding metadata including:
+- **Search queries**: What the model searched for
+- **Sources**: URLs and titles of web pages used
+- **Supports**: Text spans linked to specific sources
 
 ---
 

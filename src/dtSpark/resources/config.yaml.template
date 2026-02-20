@@ -144,8 +144,30 @@ llm_providers:
         country: null  # e.g., "AU"
         timezone: null  # e.g., "Australia/Sydney"
 
+  # Google Gemini API Configuration
+  google_gemini:
+    enabled: false  # Set to true to enable Google Gemini API
+    api_key: null  # Your Google API key (or set via GEMINI_API_KEY or GOOGLE_API_KEY environment variable)
+    rate_limit_max_retries: 5  # Maximum retry attempts for rate limit errors
+    rate_limit_base_delay: 2.0  # Base delay in seconds for exponential backoff
+
+    # Google Search Grounding - allows Gemini to search the web for current information
+    # Pricing: Per search query (Gemini 2.0+) or per prompt (Gemini 1.5)
+    web_search:
+      enabled: false  # Master switch for web search grounding capability
+      exclude_domains: []  # Optional: domains to exclude from search results (e.g., ["example.com"])
+      # Dynamic threshold (Gemini 1.5 models only): 0.0-1.0, higher = stricter triggering
+      # Default 0.3 - prompts scoring above this threshold will trigger grounding
+      dynamic_threshold: 0.3
+
+# LLM settings (applies to all providers)
+llm:
+  max_tokens: null  # Maximum tokens per response. If null, uses model's max capability automatically.
+                    # Set a specific value to limit output (e.g., 8192 for cost control)
+
+# Legacy bedrock settings (for backwards compatibility)
 bedrock:
-  max_tokens: 8192  # Maximum tokens per response
+  max_tokens: 16384  # Fallback if llm.max_tokens not set (model's actual limit used when higher)
   temperature: 0.7
   request_timeout: 300  # Timeout in seconds for model inference requests (default: 5 minutes)
 #  model_id: null  # Optional: Lock to specific model (disables model selection/changing)

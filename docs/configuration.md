@@ -178,7 +178,7 @@ graph LR
 llm_providers:
   # Force a specific model for all conversations
   mandatory_model: null          # e.g., "claude-3-5-sonnet-20241022"
-  mandatory_provider: null       # e.g., "AWS Bedrock", "Ollama", "Anthropic Direct"
+  mandatory_provider: null       # e.g., "AWS Bedrock", "Ollama", "Anthropic Direct", "Google Gemini"
 
   # AWS Bedrock
   aws_bedrock:
@@ -207,9 +207,22 @@ llm_providers:
         region: null             # e.g., "New South Wales"
         country: null            # e.g., "AU"
         timezone: null           # e.g., "Australia/Sydney"
+
+  # Google Gemini API
+  google_gemini:
+    enabled: false
+    api_key: null                # Or use GEMINI_API_KEY or GOOGLE_API_KEY env var
+    rate_limit_max_retries: 5    # Retry attempts for rate limits
+    rate_limit_base_delay: 2.0   # Base delay for exponential backoff
+
+    # Google Search Grounding
+    web_search:
+      enabled: false             # Master switch for web search grounding
+      exclude_domains: []        # Domains to exclude from search results
+      dynamic_threshold: 0.3     # Gemini 1.5 only: trigger threshold (0.0-1.0)
 ```
 
-### Web Search Configuration
+### Web Search Configuration (Anthropic)
 
 Web search allows Anthropic models to search the web for current information during conversations.
 
@@ -228,13 +241,52 @@ Web search allows Anthropic models to search the web for current information dur
 2. **Conversation** - Enable per-conversation when creating (checkbox in UI)
 3. **Request** - Toggle per-message in chat interface
 
+### Google Gemini Configuration
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `enabled` | boolean | `false` | Enable Google Gemini provider |
+| `api_key` | string | `null` | Google API key (or use `GEMINI_API_KEY`/`GOOGLE_API_KEY` env var) |
+| `rate_limit_max_retries` | integer | `5` | Retry attempts for rate limit errors |
+| `rate_limit_base_delay` | float | `2.0` | Base delay in seconds for exponential backoff |
+
+**Supported Models**: Gemini 3 Pro/Flash, Gemini 2.5 Pro/Flash, Gemini 2.0 Flash, Gemini 1.5 Pro/Flash
+
+**Features**:
+- Function calling (tool use) support
+- Up to 1M token context window (2M for Gemini 1.5 Pro)
+- Up to 65K output tokens (Gemini 2.5+)
+
+### Web Search Configuration (Google Gemini)
+
+Google Search grounding allows Gemini models to access real-time web information.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `enabled` | boolean | `false` | Master switch - enables Google Search grounding |
+| `exclude_domains` | list | `[]` | Domains to exclude from search results |
+| `dynamic_threshold` | float | `0.3` | Gemini 1.5 only: threshold (0.0-1.0) for triggering search |
+
+**Pricing**: Per search query (Gemini 2.0+) or per prompt (Gemini 1.5)
+
+**Hierarchical Control** (same as Anthropic):
+1. **Global** - Enable/disable via `web_search.enabled` in config
+2. **Conversation** - Enable per-conversation when creating (checkbox in UI)
+3. **Request** - Toggle per-message in chat interface
+
+**Key Differences from Anthropic**:
+- No `max_uses` control - model decides how many searches to make
+- Only domain blacklisting (`exclude_domains`), no whitelist
+- `dynamic_threshold` only applies to Gemini 1.5 models
+
 ### Provider Priority
 
 When multiple providers are enabled, Spark searches in this order:
 1. Mandatory provider (if specified)
 2. AWS Bedrock
 3. Anthropic Direct
-4. Ollama
+4. Google Gemini
+5. Ollama
 
 ---
 
@@ -337,6 +389,24 @@ model_context_limits:
     default:
       context_window: 4096
       max_output: 2048
+
+  # Google Gemini models
+  google_gemini:
+    gemini-3:
+      context_window: 1000000
+      max_output: 65536
+    gemini-2.5:
+      context_window: 1000000
+      max_output: 65536
+    gemini-2.0:
+      context_window: 1000000
+      max_output: 8192
+    gemini-1.5-pro:
+      context_window: 2000000
+      max_output: 8192
+    default:
+      context_window: 1000000
+      max_output: 8192
 
   # Global default
   default:
@@ -549,6 +619,9 @@ llm_providers:
   anthropic:
     enabled: false
     api_key: null
+  google_gemini:
+    enabled: false
+    api_key: null
 
 bedrock:
   max_tokens: 8192
@@ -590,6 +663,8 @@ Some settings can be set via environment variables:
 | Variable | Purpose |
 |----------|---------|
 | `ANTHROPIC_API_KEY` | Anthropic API key |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `GOOGLE_API_KEY` | Google API key (alternative to GEMINI_API_KEY) |
 | `AWS_PROFILE` | Override AWS profile |
 | `AWS_REGION` | Override AWS region |
 

@@ -21,7 +21,7 @@ spark --setup
 ```
 
 Launches the interactive setup wizard to configure:
-- LLM providers (AWS Bedrock, Ollama, Anthropic)
+- LLM providers (AWS Bedrock, Ollama, Anthropic, Google Gemini)
 - Database backend
 - Interface preferences
 - Security settings
@@ -87,7 +87,7 @@ sequenceDiagram
         User->>Spark: Select model
     end
 
-    alt Anthropic Model + Web Search Enabled
+    alt Anthropic/Gemini Model + Web Search Enabled
         Spark->>User: Offer web search option
         User->>Spark: Enable or skip
     end
@@ -108,12 +108,16 @@ Enter a descriptive name for your conversation.
 ### Step 2: Model Selection
 Choose from available models (unless model is locked in config).
 
-### Step 3: Web Search (Anthropic Models Only)
-If using an Anthropic model and web search is globally enabled, you'll be asked:
+### Step 3: Web Search (Anthropic or Google Gemini Models)
+If using an Anthropic or Google Gemini model and web search is globally enabled for that provider, you'll be asked:
 
 ```
-Enable web search for this conversation? ($0.01 per search) [y/N]:
+Enable web search for this conversation? [y/N]:
 ```
+
+**Pricing:**
+- **Anthropic**: $0.01 per search
+- **Google Gemini**: Per search query (2.0+) or per prompt (1.5)
 
 When enabled, the AI can search the web for current information during the conversation.
 
