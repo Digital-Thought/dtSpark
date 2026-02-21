@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a31] - 2026-02-21
+
+### Fixed
+- **Google Gemini Array Schema Validation** - Fixed array types missing inner `items` definition
+  - Arrays with `type: "array"` but no `items` now get `items: {type: "string"}` added
+  - Fixes `create_excel_document` tool schema where `data` was `items: {type: "array"}` without inner items
+  - Recursively processes nested arrays within object properties
+  - Handles the exact error: `properties[sheets].items.properties[data].items.items: missing field`
+
+---
+
 ## [1.1.0a30] - 2026-02-21
 
 ### Fixed

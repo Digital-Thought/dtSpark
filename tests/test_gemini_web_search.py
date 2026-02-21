@@ -379,9 +379,33 @@ def test_schema_cleaning_for_gemini():
     assert "type" in data_items, "Malformed items should have type added"
     print("   [OK] Malformed nested items fixed")
 
-    # Test 10: Complex real-world schema (like Excel write_to_excel)
-    print("\n10. Testing complex real-world schema pattern...")
-    complex_schema = {
+    # Test 10: Array type without items definition (the actual bug case)
+    print("\n10. Testing array type without items definition...")
+    schema_array_no_items = {
+        "type": "object",
+        "properties": {
+            "data": {
+                "type": "array",
+                "items": {
+                    "type": "array"
+                    # Missing inner 'items' - Gemini requires this
+                },
+                "description": "2D array"
+            }
+        }
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_array_no_items)
+    # The inner array should now have items defined
+    inner_items = cleaned["properties"]["data"]["items"]
+    assert inner_items.get("type") == "array", "Type should be array"
+    assert "items" in inner_items, "Array type should have items added"
+    assert inner_items["items"].get("type") == "string", "Inner items should default to string"
+    print("   [OK] Array type without items gets default items added")
+
+    # Test 11: Complex real-world schema (like Excel create_excel_document)
+    print("\n11. Testing complex real-world schema (Excel pattern)...")
+    excel_schema = {
         "type": "object",
         "properties": {
             "sheets": {
@@ -389,14 +413,11 @@ def test_schema_cleaning_for_gemini():
                 "items": {
                     "type": "object",
                     "properties": {
+                        "name": {"type": "string"},
                         "data": {
                             "type": "array",
-                            "items": {
-                                "type": "array",
-                                "items": {
-                                    # This should have a type
-                                }
-                            }
+                            "items": {"type": "array"},  # Missing inner items!
+                            "description": "2D array of cell values"
                         }
                     }
                 }
@@ -405,12 +426,14 @@ def test_schema_cleaning_for_gemini():
         "additionalProperties": False
     }
 
-    cleaned = service._clean_schema_for_gemini(complex_schema)
+    cleaned = service._clean_schema_for_gemini(excel_schema)
     assert "additionalProperties" not in cleaned
-    # Navigate to the innermost items and verify it has a type
-    inner_items = cleaned["properties"]["sheets"]["items"]["properties"]["data"]["items"]["items"]
-    assert "type" in inner_items, "Inner items should have type"
-    print("   [OK] Complex real-world schema properly fixed")
+    # Navigate to the data.items and verify it has inner items defined
+    data_items = cleaned["properties"]["sheets"]["items"]["properties"]["data"]["items"]
+    assert data_items.get("type") == "array", "data items should be array type"
+    assert "items" in data_items, "data items should have inner items"
+    assert data_items["items"].get("type") == "string", "Inner items should be string"
+    print("   [OK] Complex Excel schema properly fixed")
 
     print("\n" + "=" * 60)
     print("[SUCCESS] All JSON schema cleaning tests passed!")

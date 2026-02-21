@@ -286,8 +286,9 @@ class GoogleGeminiService(LLMService):
         """
         Ensure an 'items' schema has all required fields for Gemini.
 
-        Gemini requires 'items' to have a 'type' field. If missing, we add
-        a sensible default based on the schema structure.
+        Gemini requires:
+        - 'items' to have a 'type' field
+        - If 'items' has type 'array', it must have nested 'items' defining the inner array elements
 
         Args:
             items_schema: The items schema to validate/fix
@@ -298,10 +299,13 @@ class GoogleGeminiService(LLMService):
         if not isinstance(items_schema, dict):
             return items_schema
 
-        # If items is empty or only has 'items' (malformed), fix it
+        # If items is empty, default to string
         if not items_schema:
             logging.debug("Empty items schema, defaulting to string type")
             return {'type': 'string'}
+
+        # Make a copy to avoid modifying the original
+        items_schema = dict(items_schema)
 
         # If items has nested 'items' without type, it's likely a malformed array
         if 'items' in items_schema and 'type' not in items_schema:
@@ -326,6 +330,12 @@ class GoogleGeminiService(LLMService):
                 items_schema['type'] = 'string'
                 logging.debug("Items schema missing type, defaulting to string")
 
+        # CRITICAL: If type is 'array' but no 'items' defined, add default items
+        # This handles cases like: {"type": "array"} which needs {"type": "array", "items": {"type": "string"}}
+        if items_schema.get('type') == 'array' and 'items' not in items_schema:
+            logging.debug("Array type missing items definition, adding default string items")
+            items_schema['items'] = {'type': 'string'}
+
         # Recursively fix nested items
         if 'items' in items_schema and isinstance(items_schema['items'], dict):
             items_schema['items'] = self._ensure_valid_items_schema(items_schema['items'])
@@ -333,8 +343,14 @@ class GoogleGeminiService(LLMService):
         # Also check properties for nested items schemas
         if 'properties' in items_schema and isinstance(items_schema['properties'], dict):
             for prop_name, prop_schema in items_schema['properties'].items():
-                if isinstance(prop_schema, dict) and 'items' in prop_schema:
-                    prop_schema['items'] = self._ensure_valid_items_schema(prop_schema['items'])
+                if isinstance(prop_schema, dict):
+                    # Fix arrays within properties that are missing items
+                    if prop_schema.get('type') == 'array' and 'items' not in prop_schema:
+                        logging.debug(f"Property '{prop_name}' array missing items, adding default")
+                        prop_schema['items'] = {'type': 'string'}
+                    # Recursively fix items within properties
+                    if 'items' in prop_schema:
+                        prop_schema['items'] = self._ensure_valid_items_schema(prop_schema['items'])
 
         return items_schema
 
