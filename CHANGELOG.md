@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a30] - 2026-02-21
+
+### Fixed
+- **Google Gemini Schema Validation** - Fixed malformed `items` schemas in tool definitions
+  - Added `_ensure_valid_items_schema()` method to fix `items` missing `type` field
+  - Handles nested `items.items` patterns that were causing "missing field" errors
+  - Fixes schema structures like `sheets[].data[][]` where inner array items lacked type
+  - Automatically infers type from schema structure (object if has properties, array if has items)
+
+---
+
 ## [1.1.0a29] - 2026-02-21
 
 ### Fixed

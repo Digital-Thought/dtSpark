@@ -331,6 +331,87 @@ def test_schema_cleaning_for_gemini():
     assert "default" not in cleaned["properties"]["level1"]["properties"]["level2"]["properties"]["level3"]
     print("   [OK] Deeply nested structures cleaned")
 
+    # Test 7: Fix empty items schema
+    print("\n7. Testing empty items schema fixing...")
+    schema_empty_items = {
+        "type": "array",
+        "items": {}
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_empty_items)
+    assert cleaned["items"]["type"] == "string", "Empty items should default to string type"
+    print("   [OK] Empty items schema fixed with default type")
+
+    # Test 8: Fix items missing type but having properties
+    print("\n8. Testing items with properties but no type...")
+    schema_items_no_type = {
+        "type": "array",
+        "items": {
+            "properties": {
+                "name": {"type": "string"}
+            }
+        }
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_items_no_type)
+    assert cleaned["items"]["type"] == "object", "Items with properties should get type object"
+    print("   [OK] Items with properties correctly typed as object")
+
+    # Test 9: Fix malformed nested items (items.items without proper structure)
+    print("\n9. Testing malformed nested items (items.items)...")
+    schema_malformed_nested = {
+        "type": "array",
+        "items": {
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "items": {
+                        "items": {}  # Malformed - items of items with no type
+                    }
+                }
+            }
+        }
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_malformed_nested)
+    # The malformed nested items should be fixed
+    data_items = cleaned["items"]["properties"]["data"]["items"]
+    assert "type" in data_items, "Malformed items should have type added"
+    print("   [OK] Malformed nested items fixed")
+
+    # Test 10: Complex real-world schema (like Excel write_to_excel)
+    print("\n10. Testing complex real-world schema pattern...")
+    complex_schema = {
+        "type": "object",
+        "properties": {
+            "sheets": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "data": {
+                            "type": "array",
+                            "items": {
+                                "type": "array",
+                                "items": {
+                                    # This should have a type
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "additionalProperties": False
+    }
+
+    cleaned = service._clean_schema_for_gemini(complex_schema)
+    assert "additionalProperties" not in cleaned
+    # Navigate to the innermost items and verify it has a type
+    inner_items = cleaned["properties"]["sheets"]["items"]["properties"]["data"]["items"]["items"]
+    assert "type" in inner_items, "Inner items should have type"
+    print("   [OK] Complex real-world schema properly fixed")
+
     print("\n" + "=" * 60)
     print("[SUCCESS] All JSON schema cleaning tests passed!")
 

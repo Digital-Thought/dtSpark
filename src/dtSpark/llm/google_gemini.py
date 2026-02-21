@@ -210,6 +210,10 @@ class GoogleGeminiService(LLMService):
         - examples
         - etc.
 
+        Additionally, Gemini requires:
+        - All 'items' definitions must have a 'type' field
+        - Nested items must be properly structured
+
         Args:
             schema: JSON schema object to clean
 
@@ -261,7 +265,13 @@ class GoogleGeminiService(LLMService):
                     continue
 
                 # Recursively clean nested structures
-                cleaned[key] = self._clean_schema_for_gemini(value)
+                cleaned_value = self._clean_schema_for_gemini(value)
+
+                # Special handling for 'items' - must have a type
+                if key == 'items' and isinstance(cleaned_value, dict):
+                    cleaned_value = self._ensure_valid_items_schema(cleaned_value)
+
+                cleaned[key] = cleaned_value
 
             return cleaned
 
@@ -271,6 +281,62 @@ class GoogleGeminiService(LLMService):
         else:
             # Primitive values pass through unchanged
             return schema
+
+    def _ensure_valid_items_schema(self, items_schema: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure an 'items' schema has all required fields for Gemini.
+
+        Gemini requires 'items' to have a 'type' field. If missing, we add
+        a sensible default based on the schema structure.
+
+        Args:
+            items_schema: The items schema to validate/fix
+
+        Returns:
+            Valid items schema
+        """
+        if not isinstance(items_schema, dict):
+            return items_schema
+
+        # If items is empty or only has 'items' (malformed), fix it
+        if not items_schema:
+            logging.debug("Empty items schema, defaulting to string type")
+            return {'type': 'string'}
+
+        # If items has nested 'items' without type, it's likely a malformed array
+        if 'items' in items_schema and 'type' not in items_schema:
+            # Check if the nested items is also problematic
+            nested_items = items_schema.get('items')
+            if isinstance(nested_items, dict):
+                if not nested_items or 'type' not in nested_items:
+                    # Remove malformed nested items and treat as simple array
+                    logging.debug("Removing malformed nested items schema")
+                    items_schema = {k: v for k, v in items_schema.items() if k != 'items'}
+                    if 'type' not in items_schema:
+                        items_schema['type'] = 'string'
+
+        # If still no type, infer from structure
+        if 'type' not in items_schema:
+            if 'properties' in items_schema:
+                items_schema['type'] = 'object'
+            elif 'items' in items_schema:
+                items_schema['type'] = 'array'
+            else:
+                # Default to string for unknown schemas
+                items_schema['type'] = 'string'
+                logging.debug("Items schema missing type, defaulting to string")
+
+        # Recursively fix nested items
+        if 'items' in items_schema and isinstance(items_schema['items'], dict):
+            items_schema['items'] = self._ensure_valid_items_schema(items_schema['items'])
+
+        # Also check properties for nested items schemas
+        if 'properties' in items_schema and isinstance(items_schema['properties'], dict):
+            for prop_name, prop_schema in items_schema['properties'].items():
+                if isinstance(prop_schema, dict) and 'items' in prop_schema:
+                    prop_schema['items'] = self._ensure_valid_items_schema(prop_schema['items'])
+
+        return items_schema
 
     def _convert_tools_to_gemini_format(
         self,
