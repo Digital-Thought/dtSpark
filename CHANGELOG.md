@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0a29] - 2026-02-21
+
+### Fixed
+- **Google Gemini MCP Tool Compatibility** - Fixed JSON Schema incompatibility with Gemini API
+  - Added `_clean_schema_for_gemini()` method to recursively strip unsupported JSON Schema fields
+  - Removes `additionalProperties`, `$schema`, `$defs`, `$ref`, `default`, and other unsupported fields
+  - Fixes "Unknown name 'additional_properties'" error when using MCP tools with Gemini
+
+### Added
+- **Google Gemini Web UI Support** - Added Google Gemini to web interface
+  - Provider icon (stars) and Google blue colour (#4285f4) in Overview and LLMs tabs
+  - Provider detection in backend API for google_gemini type
+  - CSS styling for google_gemini provider cards
+
+### Tests
+- Added comprehensive tests for JSON schema cleaning in `test_gemini_web_search.py`
+- Tests cover nested objects, arrays, and deeply nested structures
+
+---
+
 ## [1.1.0a28] - 2026-02-20
 
 ### Added

@@ -195,6 +195,146 @@ def test_web_search_config_integration():
     print("[SUCCESS] Web search config integration test passed!")
 
 
+def test_schema_cleaning_for_gemini():
+    """Test that JSON schemas are properly cleaned for Gemini API compatibility."""
+    try:
+        from dtSpark.llm.google_gemini import GoogleGeminiService
+    except ImportError:
+        print("SKIP: google-genai package not installed")
+        return
+
+    print("\nTesting JSON schema cleaning for Gemini...")
+    print("=" * 60)
+
+    # Create service instance for testing
+    service = GoogleGeminiService.__new__(GoogleGeminiService)
+    service.api_key = "test-key"
+    service.current_model_id = "gemini-2.0-flash"
+
+    # Test 1: Remove additionalProperties
+    print("\n1. Testing removal of additionalProperties...")
+    schema_with_additional = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "nested": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "value": {"type": "number"}
+                }
+            }
+        },
+        "additionalProperties": True
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_with_additional)
+    assert "additionalProperties" not in cleaned, "additionalProperties should be removed"
+    assert "additionalProperties" not in cleaned["properties"]["nested"], \
+        "Nested additionalProperties should be removed"
+    print("   [OK] additionalProperties removed")
+
+    # Test 2: Remove $schema, $defs, $ref
+    print("\n2. Testing removal of JSON Schema meta fields...")
+    schema_with_meta = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$defs": {"StringDef": {"type": "string"}},
+        "type": "object",
+        "properties": {
+            "field": {"$ref": "#/$defs/StringDef"}
+        }
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_with_meta)
+    assert "$schema" not in cleaned, "$schema should be removed"
+    assert "$defs" not in cleaned, "$defs should be removed"
+    assert "$ref" not in cleaned["properties"]["field"], "$ref should be removed"
+    print("   [OK] JSON Schema meta fields removed")
+
+    # Test 3: Remove additional_properties (snake_case variant)
+    print("\n3. Testing removal of additional_properties (snake_case)...")
+    schema_with_snake = {
+        "type": "object",
+        "additional_properties": False,
+        "properties": {
+            "id": {"type": "string"}
+        }
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_with_snake)
+    assert "additional_properties" not in cleaned, "additional_properties should be removed"
+    print("   [OK] additional_properties (snake_case) removed")
+
+    # Test 4: Preserve valid fields
+    print("\n4. Testing preservation of valid JSON Schema fields...")
+    valid_schema = {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "The name"},
+            "count": {"type": "integer", "minimum": 0}
+        },
+        "required": ["name"]
+    }
+
+    cleaned = service._clean_schema_for_gemini(valid_schema)
+    assert cleaned["type"] == "object", "type should be preserved"
+    assert "properties" in cleaned, "properties should be preserved"
+    assert "required" in cleaned, "required should be preserved"
+    assert cleaned["properties"]["name"]["description"] == "The name", "description should be preserved"
+    print("   [OK] Valid fields preserved")
+
+    # Test 5: Handle nested arrays
+    print("\n5. Testing cleaning of nested arrays...")
+    schema_with_array = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "value": {"type": "string"}
+            }
+        }
+    }
+
+    cleaned = service._clean_schema_for_gemini(schema_with_array)
+    assert "additionalProperties" not in cleaned["items"], \
+        "additionalProperties in array items should be removed"
+    print("   [OK] Nested arrays cleaned")
+
+    # Test 6: Handle deeply nested structures
+    print("\n6. Testing deeply nested structure cleaning...")
+    deep_schema = {
+        "type": "object",
+        "properties": {
+            "level1": {
+                "type": "object",
+                "additionalProperties": True,
+                "properties": {
+                    "level2": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "level3": {
+                                "type": "string",
+                                "default": "test"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    cleaned = service._clean_schema_for_gemini(deep_schema)
+    assert "additionalProperties" not in cleaned["properties"]["level1"]
+    assert "additionalProperties" not in cleaned["properties"]["level1"]["properties"]["level2"]
+    assert "default" not in cleaned["properties"]["level1"]["properties"]["level2"]["properties"]["level3"]
+    print("   [OK] Deeply nested structures cleaned")
+
+    print("\n" + "=" * 60)
+    print("[SUCCESS] All JSON schema cleaning tests passed!")
+
+
 if __name__ == '__main__':
     print("Testing Google Gemini Web Search (Grounding)...")
     print("=" * 80)
@@ -210,6 +350,10 @@ if __name__ == '__main__':
     print("\n3. Testing web search config integration...")
     print("-" * 40)
     test_web_search_config_integration()
+
+    print("\n4. Testing JSON schema cleaning for Gemini...")
+    print("-" * 40)
+    test_schema_cleaning_for_gemini()
 
     print("\n" + "=" * 80)
     print("All Google Gemini web search tests completed!")

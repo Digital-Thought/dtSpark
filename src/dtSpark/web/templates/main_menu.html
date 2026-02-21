@@ -14,6 +14,7 @@
     .provider-card.aws { border-left-color: #ff9900; }
     .provider-card.anthropic { border-left-color: #d4a574; }
     .provider-card.ollama { border-left-color: #0ea5e9; }
+    .provider-card.google_gemini { border-left-color: #4285f4; }
     .provider-card.none { border-left-color: #6c757d; }
 
     .status-indicator {
@@ -109,6 +110,7 @@
     .provider-icon.bedrock { color: #ff9900; }
     .provider-icon.anthropic { color: #d4a574; }
     .provider-icon.ollama { color: #0ea5e9; }
+    .provider-icon.google_gemini { color: #4285f4; }
 
     /* Provider selector buttons in LLMs tab */
     .provider-selector {
@@ -423,6 +425,12 @@ const providerDefinitions = {
         icon: 'bi-cpu-fill',
         colour: '#d4a574',
         description: 'Direct API access to Claude models'
+    },
+    'google_gemini': {
+        name: 'Google Gemini',
+        icon: 'bi-stars',
+        colour: '#4285f4',
+        description: 'Google AI API with up to 1M token context'
     },
     'ollama': {
         name: 'Ollama',

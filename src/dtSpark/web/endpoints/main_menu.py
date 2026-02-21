@@ -203,6 +203,9 @@ def _detect_provider_type(app_instance, provider_name: str, service) -> tuple:
         provider_type = 'ollama'
         auth_method = 'local'
         base_url = getattr(service, 'base_url', 'http://localhost:11434')
+    elif 'gemini' in provider_name_lower or 'google' in provider_name_lower:
+        provider_type = 'google_gemini'
+        auth_method = 'api_key'
     else:
         provider_type = 'unknown'
 

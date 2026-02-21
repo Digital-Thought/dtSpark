@@ -196,6 +196,82 @@ class GoogleGeminiService(LLMService):
         self.current_model_id = model_id
         logging.info(f"Google Gemini model set to: {model_id}")
 
+    def _clean_schema_for_gemini(self, schema: Any) -> Any:
+        """
+        Recursively clean a JSON schema for Gemini API compatibility.
+
+        Gemini's API doesn't support certain JSON Schema fields like:
+        - additionalProperties
+        - $schema
+        - $defs / definitions
+        - $ref
+        - $id
+        - default (in some contexts)
+        - examples
+        - etc.
+
+        Args:
+            schema: JSON schema object to clean
+
+        Returns:
+            Cleaned schema safe for Gemini API
+        """
+        # Fields that Gemini's API doesn't support
+        unsupported_fields = {
+            'additionalProperties',
+            'additional_properties',  # Snake case variant
+            '$schema',
+            '$defs',
+            'definitions',
+            '$ref',
+            '$id',
+            'default',
+            'examples',
+            'const',
+            'contentMediaType',
+            'contentEncoding',
+            'deprecated',
+            'readOnly',
+            'writeOnly',
+            'externalDocs',
+            '$comment',
+            'if',
+            'then',
+            'else',
+            'allOf',
+            'anyOf',
+            'oneOf',
+            'not',
+            'patternProperties',
+            'unevaluatedProperties',
+            'unevaluatedItems',
+            'propertyNames',
+            'minContains',
+            'maxContains',
+            'dependentRequired',
+            'dependentSchemas',
+        }
+
+        if isinstance(schema, dict):
+            cleaned = {}
+            for key, value in schema.items():
+                # Skip unsupported fields
+                if key in unsupported_fields:
+                    logging.debug(f"Stripping unsupported schema field: {key}")
+                    continue
+
+                # Recursively clean nested structures
+                cleaned[key] = self._clean_schema_for_gemini(value)
+
+            return cleaned
+
+        elif isinstance(schema, list):
+            return [self._clean_schema_for_gemini(item) for item in schema]
+
+        else:
+            # Primitive values pass through unchanged
+            return schema
+
     def _convert_tools_to_gemini_format(
         self,
         tools: List[Dict[str, Any]]
@@ -241,10 +317,12 @@ class GoogleGeminiService(LLMService):
             }
 
             if parameters:
+                # Clean the schema for Gemini compatibility
+                cleaned_parameters = self._clean_schema_for_gemini(parameters)
                 # Ensure proper format for Gemini
-                if 'type' not in parameters:
-                    parameters['type'] = 'object'
-                func_decl['parameters'] = parameters
+                if 'type' not in cleaned_parameters:
+                    cleaned_parameters['type'] = 'object'
+                func_decl['parameters'] = cleaned_parameters
 
             function_declarations.append(func_decl)
 

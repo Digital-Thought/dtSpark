@@ -229,9 +229,14 @@ async def command_info(
             current_tokens = conv.get('total_tokens', 0)
             context_usage_percent = (current_tokens / context_window * 100) if context_window > 0 else 0
 
+            # Get the actual max_tokens that will be used for requests
+            # This may be lower than max_output if configured that way
+            configured_max_tokens = conversation_manager.max_tokens
+
             rollup_info = {
                 "context_window": context_window,
-                "max_output": max_output,
+                "max_output": max_output,  # Model's maximum capability
+                "configured_max_tokens": configured_max_tokens,  # Actual limit being used
                 "compaction_threshold": compaction_threshold,
                 "compaction_trigger_tokens": compaction_trigger_tokens,
                 "emergency_threshold": emergency_threshold,

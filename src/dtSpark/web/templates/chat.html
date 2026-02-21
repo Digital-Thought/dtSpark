@@ -776,7 +776,8 @@ async function loadConversationInfo() {
                         </div>
                         <ul class="list-unstyled mb-0">
                             <li><strong>Context Window:</strong> ${rollupSettings.context_window?.toLocaleString() || 'Unknown'} tokens</li>
-                            <li><strong>Max Output:</strong> ${rollupSettings.max_output?.toLocaleString() || 'Unknown'} tokens</li>
+                            <li><strong>Max Output (Model):</strong> ${rollupSettings.max_output?.toLocaleString() || 'Unknown'} tokens</li>
+                            <li><strong>Max Output (Configured):</strong> ${rollupSettings.configured_max_tokens?.toLocaleString() || rollupSettings.max_output?.toLocaleString() || 'Unknown'} tokens</li>
                             <li><strong>Compaction Threshold:</strong> ${compactionThresholdPercent}% (${rollupSettings.compaction_trigger_tokens?.toLocaleString() || 0} tokens)</li>
                             <li><strong>Emergency Threshold:</strong> ${emergencyThresholdPercent}% (${rollupSettings.emergency_trigger_tokens?.toLocaleString() || 0} tokens)</li>
                             <li><strong>Provider:</strong> ${rollupSettings.provider || 'Unknown'}</li>
