@@ -523,7 +523,6 @@ class GoogleGeminiService(LLMService):
                         elif block_type in ('server_tool_use', 'web_search_tool_result'):
                             # Skip Anthropic-specific blocks - not supported by Gemini
                             logging.debug(f"Skipping Anthropic-specific block type: {block_type}")
-                            continue
 
                     elif isinstance(block, str):
                         parts.append({'text': block})

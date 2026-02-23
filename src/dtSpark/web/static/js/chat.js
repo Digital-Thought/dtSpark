@@ -586,8 +586,15 @@ function showCompactionStatus(status, message, data) {
     let indicator = document.getElementById(compactionId);
 
     if (status === 'start' || status === 'progress') {
-        // Create indicator if it doesn't exist (handles both start and progress)
-        if (!indicator) {
+        // Update existing indicator or create new one
+        if (indicator) {
+            // Update existing indicator's message
+            const messageSpan = indicator.querySelector('.compaction-message');
+            if (messageSpan) {
+                messageSpan.textContent = message;
+            }
+        } else {
+            // Create new indicator
             indicator = document.createElement('div');
             indicator.className = 'compaction-indicator';
             indicator.id = compactionId;
@@ -606,12 +613,6 @@ function showCompactionStatus(status, message, data) {
             `;
             messagesContainer.appendChild(indicator);
             scrollToBottom();
-        } else {
-            // Update existing indicator's message
-            const messageSpan = indicator.querySelector('.compaction-message');
-            if (messageSpan) {
-                messageSpan.textContent = message;
-            }
         }
 
     } else if (status === 'complete') {
@@ -1210,15 +1211,13 @@ async function showConflictResolutionDialog(requestId, toolUseId, errorMessage, 
                     body: formData
                 });
 
-                if (!result.ok) {
+                if (result.ok && removeOrphan) {
+                    showToast('Orphaned message removed. Retrying request...', 'success');
+                } else if (result.ok) {
+                    showToast('Request cancelled. Conversation history preserved.', 'info');
+                } else {
                     console.error('Failed to submit conflict response:', result.statusText);
                     showToast('Failed to submit conflict response', 'error');
-                } else {
-                    if (removeOrphan) {
-                        showToast('Orphaned message removed. Retrying request...', 'success');
-                    } else {
-                        showToast('Request cancelled. Conversation history preserved.', 'info');
-                    }
                 }
             } catch (error) {
                 console.error('Error submitting conflict response:', error);

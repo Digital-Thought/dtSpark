@@ -15,7 +15,7 @@ import logging
 import tempfile
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
@@ -28,6 +28,9 @@ from ..dependencies import get_current_session
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Constants for error messages
+CONVERSATION_NOT_FOUND = "Conversation not found"
 
 
 class Message(BaseModel):
@@ -57,7 +60,7 @@ class CommandResponse(BaseModel):
 async def get_chat_history(
     conversation_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> ChatHistory:
     """
     Get chat history for a conversation.
@@ -79,7 +82,7 @@ async def get_chat_history(
         # Get conversation name from database
         conv = database.get_conversation(conversation_id)
         if not conv:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND)
         conv_name = conv['name']
 
         # Set the model from the conversation and update service references
@@ -122,7 +125,7 @@ async def send_message(
     conversation_id: int,
     request: Request,
     message: str = Form(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Send a message in a conversation.
@@ -165,7 +168,7 @@ async def send_message(
 async def command_info(
     conversation_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
     Execute 'info' command to get conversation information.
@@ -184,7 +187,7 @@ async def command_info(
         # Get conversation
         conv = database.get_conversation(conversation_id)
         if not conv:
-            raise HTTPException(status_code=404, detail="Conversation not found")
+            raise HTTPException(status_code=404, detail=CONVERSATION_NOT_FOUND)
 
         # Get model usage breakdown
         model_usage = database.get_model_usage_breakdown(conversation_id)
@@ -292,7 +295,7 @@ async def command_attach(
     conversation_id: int,
     request: Request,
     files: List[UploadFile] = File(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
     Execute 'attach' command to attach files to conversation.
@@ -390,7 +393,7 @@ async def command_export(
     request: Request,
     format: str = Form(...),  # 'markdown', 'html', or 'csv'
     include_tools: bool = Form(True),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Execute 'export' command to export conversation.
@@ -443,7 +446,7 @@ async def command_change_model(
     conversation_id: int,
     request: Request,
     model_id: str = Form(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
     Execute 'changemodel' command to change conversation model.
@@ -478,7 +481,7 @@ async def command_change_model(
             return CommandResponse(
                 command="changemodel",
                 status="error",
-                message="Conversation not found",
+                message=CONVERSATION_NOT_FOUND,
                 data=None,
             )
 
@@ -518,7 +521,7 @@ async def command_change_model(
 async def command_mcp_audit(
     conversation_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
     Execute 'mcpaudit' command to get MCP transaction audit log.
@@ -551,7 +554,7 @@ async def command_mcp_audit(
 async def command_mcp_servers(
     conversation_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
     Execute 'mcpservers' command to get MCP server states.
@@ -591,7 +594,7 @@ async def toggle_mcp_server(
     request: Request,
     server_name: str = Form(...),
     enabled: bool = Form(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
     Toggle MCP server enabled/disabled state.
@@ -633,7 +636,7 @@ async def update_instructions(
     request: Request,
     conversation_id: int,
     instructions: str = Form(""),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Update conversation instructions/system prompt.
@@ -691,7 +694,7 @@ async def update_instructions(
 async def delete_files(
     request: Request,
     conversation_id: int,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Delete attached files from a conversation.
@@ -770,7 +773,7 @@ async def respond_to_security_request(
     request: Request,
     request_id: str = Form(...),
     confirmed: bool = Form(...),
-    session_id: str = Depends(get_current_session)
+    session_id: Annotated[str, Depends(get_current_session)]
 ):
     """
     Submit a response to a security confirmation request.
@@ -821,7 +824,7 @@ async def respond_to_permission_request(
     request: Request,
     request_id: str = Form(...),
     response: str = Form(...),
-    session_id: str = Depends(get_current_session)
+    session_id: Annotated[str, Depends(get_current_session)]
 ):
     """
     Submit a response to a tool permission request.
@@ -873,7 +876,7 @@ async def submit_conflict_response(
     conversation_id: int,
     request_id: str = Form(...),
     remove_orphan: bool = Form(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Submit a response to a conflict resolution request (orphan tool_result).
@@ -930,7 +933,7 @@ async def submit_conflict_response(
 async def get_compaction_settings(
     request: Request,
     conversation_id: int,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Get current compaction settings for a conversation.
@@ -970,7 +973,7 @@ async def set_compaction_model(
     request: Request,
     conversation_id: int,
     model_id: str = Form(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Set the compaction model for a conversation.
@@ -1011,7 +1014,7 @@ async def set_compaction_threshold(
     request: Request,
     conversation_id: int,
     threshold: str = Form(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Set the compaction threshold for a conversation.
@@ -1067,7 +1070,7 @@ async def set_compaction_ratio(
     request: Request,
     conversation_id: int,
     ratio: str = Form(...),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Set the compaction summary ratio for a conversation.

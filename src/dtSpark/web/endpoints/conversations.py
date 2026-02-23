@@ -15,7 +15,7 @@ import logging
 import tempfile
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
@@ -72,7 +72,7 @@ class ConversationDetail(BaseModel):
 @router.get("/conversations")
 async def list_conversations(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> List[ConversationSummary]:
     """
     List all conversations.
@@ -110,7 +110,7 @@ async def list_conversations(
 async def get_conversation(
     conversation_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> ConversationDetail:
     """
     Get detailed information about a conversation.
@@ -162,7 +162,7 @@ async def create_conversation(
     instructions: Optional[str] = Form(None),
     web_search_enabled: Optional[str] = Form(None),
     files: Optional[List[UploadFile]] = File(None),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> ConversationDetail:
     """
     Create a new conversation.
@@ -319,7 +319,7 @@ async def create_conversation(
 async def delete_conversation(
     conversation_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Delete a conversation.
@@ -357,7 +357,7 @@ async def delete_conversation(
 @router.get("/models")
 async def list_models(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
     provider: Optional[str] = None,
 ) -> dict:
     """

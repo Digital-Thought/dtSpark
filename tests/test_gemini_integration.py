@@ -80,7 +80,7 @@ def main():
     try:
         manager = LLMManager()
         manager.register_provider(service)
-        print(f"[OK] Provider registered with manager")
+        print("[OK] Provider registered with manager")
 
         all_models = manager.list_all_models()
         gemini_models = [m for m in all_models if 'Gemini' in m.get('provider', '')]
@@ -108,7 +108,7 @@ def main():
     print("\nTesting rate limit info...")
     try:
         rate_limits = service.get_rate_limits()
-        print(f"[OK] Rate limits retrieved:")
+        print("[OK] Rate limits retrieved:")
         print(f"    Has limits: {rate_limits.get('has_limits')}")
         print(f"    Requests/min: {rate_limits.get('requests_per_minute')}")
         print(f"    Input tokens/min: {rate_limits.get('input_tokens_per_minute')}")

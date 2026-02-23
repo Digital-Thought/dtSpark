@@ -56,7 +56,7 @@ def test_message_conversion_with_tools():
     ]
 
     # Convert messages to Gemini format
-    gemini_messages, system_instruction = service._convert_messages_to_gemini_format(messages)
+    gemini_messages, _ = service._convert_messages_to_gemini_format(messages)
 
     # Verify conversion
     print("Converted messages:")

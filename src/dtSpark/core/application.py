@@ -29,6 +29,11 @@ module_package: ModulePackage = load_module_package(os.path.join(parent_dir, '_m
 # Force OpenTelemetry to use contextvars context
 os.environ['OTEL_PYTHON_CONTEXT'] = 'contextvars_context'
 
+# Settings key constants
+SETTINGS_LLM_MAX_TOKENS = 'llm.max_tokens'
+SETTINGS_BEDROCK_MAX_TOKENS = 'bedrock.max_tokens'
+DEFAULT_MAX_TOKENS = 16384
+
 def version():
     """Returns the version of the module."""
     return module_package.version
@@ -500,7 +505,7 @@ class AWSBedrockCLI(AbstractApp):
                     api_key = self._get_nested_setting('llm_providers.anthropic.api_key', '')
 
                     # Get default max_tokens (prefer llm.max_tokens, fall back to bedrock.max_tokens)
-                    default_max_tokens = self.settings.get('llm.max_tokens') or self.settings.get('bedrock.max_tokens', 16384)
+                    default_max_tokens = self.settings.get(SETTINGS_LLM_MAX_TOKENS) or self.settings.get(SETTINGS_BEDROCK_MAX_TOKENS, DEFAULT_MAX_TOKENS)
 
                     # Get rate limit configuration
                     rate_limit_max_retries = self._get_nested_setting('llm_providers.anthropic.rate_limit_max_retries', 5)
@@ -536,7 +541,7 @@ class AWSBedrockCLI(AbstractApp):
                     google_api_key = self._get_nested_setting('llm_providers.google_gemini.api_key', '')
 
                     # Get default max_tokens
-                    google_max_tokens = self.settings.get('llm.max_tokens') or self.settings.get('bedrock.max_tokens', 16384)
+                    google_max_tokens = self.settings.get(SETTINGS_LLM_MAX_TOKENS) or self.settings.get(SETTINGS_BEDROCK_MAX_TOKENS, DEFAULT_MAX_TOKENS)
 
                     # Get rate limit configuration
                     google_rate_limit_retries = self._get_nested_setting('llm_providers.google_gemini.rate_limit_max_retries', 5)
@@ -727,7 +732,7 @@ class AWSBedrockCLI(AbstractApp):
             # Task 6: Initialise conversation manager
             task_conv = progress.add_task("[cyan]Initialising conversation manager...", total=100)
             # Use llm.max_tokens if set, otherwise fall back to bedrock.max_tokens for backwards compatibility
-            max_tokens = self.settings.get('llm.max_tokens') or self.settings.get('bedrock.max_tokens', 16384)
+            max_tokens = self.settings.get(SETTINGS_LLM_MAX_TOKENS) or self.settings.get(SETTINGS_BEDROCK_MAX_TOKENS, DEFAULT_MAX_TOKENS)
             rollup_threshold = self.settings.get('conversation.rollup_threshold', 0.8)
             rollup_summary_ratio = self.settings.get('conversation.rollup_summary_ratio', 0.3)
             max_tool_result_tokens = self.settings.get('conversation.max_tool_result_tokens', 10000)

@@ -33,6 +33,7 @@ tiktoken>=0.5.0
 
 # LLM Providers
 ollama>=0.2.0
+google-genai
 
 # Framework
 dtPyAppFramework>=4.3.0
