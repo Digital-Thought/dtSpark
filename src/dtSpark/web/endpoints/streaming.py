@@ -479,8 +479,8 @@ async def stream_chat(
     request: Request,
     conversation_id: int,
     message: str,
-    web_search_active: bool = False,
     session_id: Annotated[str, Depends(get_current_session)],
+    web_search_active: bool = False,
 ):
     """
     SSE endpoint for streaming chat responses.
@@ -554,8 +554,8 @@ async def stream_tool(
 async def stream_progress(
     request: Request,
     task_name: str,
-    total_steps: int = 10,
     session_id: Annotated[str, Depends(get_current_session)],
+    total_steps: int = 10,
 ):
     """
     SSE endpoint for streaming progress updates.
