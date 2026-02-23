@@ -411,12 +411,12 @@ async def list_models(
 
         # Filter by provider if specified (for cross-provider restriction in chats)
         if provider:
-            # Normalise provider matching (case-insensitive, partial match)
-            provider_lower = provider.lower()
+            # Normalise provider matching (case-insensitive, handle underscores/spaces)
+            provider_normalised = provider.lower().replace('_', ' ').replace('-', ' ')
             models = [
                 m for m in models
-                if provider_lower in m['provider'].lower()
-                or provider_lower in m['id'].lower()
+                if provider_normalised in m['provider'].lower().replace('_', ' ').replace('-', ' ')
+                or provider.lower() in m['id'].lower()
             ]
 
         # Check if web search is globally enabled for any provider
