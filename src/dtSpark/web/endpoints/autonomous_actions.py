@@ -153,8 +153,8 @@ class ActionRunDetail(BaseModel):
 @router.get("/actions")
 async def list_actions(
     request: Request,
-    include_disabled: bool = Query(True, description="Include disabled actions"),
     session_id: Annotated[str, Depends(get_current_session)],
+    include_disabled: bool = Query(True, description="Include disabled actions"),
 ) -> List[ActionSummary]:
     """
     List all autonomous actions.
@@ -565,9 +565,9 @@ async def run_action_now(
 async def list_action_runs(
     action_id: int,
     request: Request,
+    session_id: Annotated[str, Depends(get_current_session)],
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    session_id: Annotated[str, Depends(get_current_session)],
 ) -> List[ActionRunSummary]:
     """
     List runs for a specific action.
@@ -662,8 +662,8 @@ async def export_run_result(
     action_id: int,
     run_id: int,
     request: Request,
-    format: str = Query("text", pattern="^(text|html|markdown)$"),
     session_id: Annotated[str, Depends(get_current_session)],
+    format: str = Query("text", pattern="^(text|html|markdown)$"),
 ):
     """
     Export run result in specified format.
@@ -713,8 +713,8 @@ async def export_run_result(
 @router.get("/actions/runs/recent")
 async def list_recent_runs(
     request: Request,
-    limit: int = Query(20, ge=1, le=100),
     session_id: Annotated[str, Depends(get_current_session)],
+    limit: int = Query(20, ge=1, le=100),
 ) -> List[ActionRunSummary]:
     """
     List recent runs across all actions.

@@ -475,8 +475,8 @@ async def get_all_tools(
 @router.get("/mcp/tools")
 async def get_mcp_tools(
     request: Request,
-    server: Optional[str] = None,
     session_id: Annotated[str, Depends(get_current_session)],
+    server: Optional[str] = None,
 ) -> list[dict]:
     """
     Get available tools from MCP servers.
