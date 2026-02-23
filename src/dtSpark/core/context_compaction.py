@@ -1263,6 +1263,10 @@ def get_provider_from_model_id(model_id: str) -> str:
     """
     model_lower = model_id.lower()
 
+    # Check for Google Gemini models (e.g., models/gemini-2.5-pro)
+    if 'gemini' in model_lower or model_lower.startswith('models/'):
+        return 'google_gemini'
+
     # Check for Anthropic/Claude models
     if 'claude' in model_lower or 'anthropic' in model_lower:
         return 'anthropic'

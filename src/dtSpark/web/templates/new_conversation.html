@@ -183,10 +183,14 @@ function updateWebSearchVisibility(provider) {
     const webSearchOption = document.getElementById('web-search-option');
     const webSearchCheckbox = document.getElementById('web-search-enabled');
 
-    // Show web search option only for Anthropic provider and if globally enabled
-    // Provider can be "Anthropic" or "Anthropic Direct" depending on configuration
-    const isAnthropic = provider && (provider === 'Anthropic' || provider === 'Anthropic Direct');
-    if (webSearchGloballyEnabled && isAnthropic) {
+    // Show web search option for providers that support it and if globally enabled
+    // Supported providers: Anthropic (Direct), Google Gemini
+    const providerLower = (provider || '').toLowerCase();
+    const isAnthropic = providerLower.includes('anthropic');
+    const isGemini = providerLower.includes('gemini') || providerLower.includes('google');
+    const supportsWebSearch = isAnthropic || isGemini;
+
+    if (webSearchGloballyEnabled && supportsWebSearch) {
         webSearchOption.style.display = 'block';
     } else {
         webSearchOption.style.display = 'none';

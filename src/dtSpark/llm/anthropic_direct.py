@@ -537,7 +537,8 @@ class AnthropicService(LLMService):
         """
         Convert standard message format to Anthropic format.
 
-        The Anthropic API uses the same format as our standard, so minimal conversion needed.
+        Strips provider-specific fields that Anthropic doesn't accept
+        (e.g., thought_signature from Gemini).
         """
         anthropic_messages = []
 
@@ -545,13 +546,47 @@ class AnthropicService(LLMService):
             role = msg.get('role', 'user')
             content = msg.get('content', [])
 
-            # Anthropic uses the same content block format
+            # Clean content blocks to remove provider-specific fields
+            if isinstance(content, list):
+                cleaned_content = []
+                for block in content:
+                    if isinstance(block, dict):
+                        # Create a clean copy without provider-specific fields
+                        cleaned_block = self._clean_content_block(block)
+                        cleaned_content.append(cleaned_block)
+                    else:
+                        cleaned_content.append(block)
+                content = cleaned_content
+
             anthropic_messages.append({
                 'role': role,
                 'content': content
             })
 
         return anthropic_messages
+
+    def _clean_content_block(self, block: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Clean a content block by removing provider-specific fields.
+
+        Args:
+            block: Content block dictionary
+
+        Returns:
+            Cleaned content block safe for Anthropic API
+        """
+        # Fields that are specific to other providers and not accepted by Anthropic
+        provider_specific_fields = {
+            'thought_signature',  # Gemini 3.x thought signatures
+        }
+
+        # Create a clean copy
+        cleaned = {}
+        for key, value in block.items():
+            if key not in provider_specific_fields:
+                cleaned[key] = value
+
+        return cleaned
 
     def _convert_tools_to_anthropic(
         self,

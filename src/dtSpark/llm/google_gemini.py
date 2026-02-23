@@ -5,6 +5,7 @@ This module provides integration with Google's Gemini API for LLM inference,
 supporting text generation and function/tool calling capabilities.
 """
 
+import base64
 import json
 import logging
 import os
@@ -420,6 +421,9 @@ class GoogleGeminiService(LLMService):
         """
         Convert messages from standard format to Gemini's content format.
 
+        Handles cross-provider compatibility by skipping provider-specific blocks
+        (e.g., Anthropic's server_tool_use, web_search_tool_result).
+
         Args:
             messages: List of messages in standard format
             system: Optional system prompt
@@ -428,6 +432,20 @@ class GoogleGeminiService(LLMService):
             Tuple of (contents list, system instruction)
         """
         contents = []
+
+        # Track tool_use_id -> function_name mapping for tool_result conversion
+        tool_id_to_name = {}
+
+        # First pass: build tool_id_to_name mapping from all messages
+        for msg in messages:
+            content = msg.get('content', '')
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get('type') == 'tool_use':
+                        tool_id = block.get('id', '')
+                        tool_name = block.get('name', '')
+                        if tool_id and tool_name:
+                            tool_id_to_name[tool_id] = tool_name
 
         for msg in messages:
             role = msg.get('role', 'user')
@@ -459,12 +477,24 @@ class GoogleGeminiService(LLMService):
 
                         elif block_type == 'tool_use':
                             # Convert to Gemini function call format
-                            parts.append({
+                            part_data = {
                                 'function_call': {
                                     'name': block.get('name', ''),
                                     'args': block.get('input', {})
                                 }
-                            })
+                            }
+                            # Include thought signature if present (required for Gemini 3.x)
+                            # Decode from base64 string back to bytes
+                            if 'thought_signature' in block and block['thought_signature']:
+                                sig = block['thought_signature']
+                                if isinstance(sig, str):
+                                    try:
+                                        part_data['thought_signature'] = base64.b64decode(sig)
+                                    except Exception:
+                                        part_data['thought_signature'] = sig.encode('utf-8')
+                                else:
+                                    part_data['thought_signature'] = sig
+                            parts.append(part_data)
 
                         elif block_type == 'tool_result':
                             # Convert to Gemini function response format
@@ -479,12 +509,22 @@ class GoogleGeminiService(LLMService):
                                         result_text += item
                                 result_content = result_text
 
+                            # Get function name from tool_use_id mapping
+                            tool_use_id = block.get('tool_use_id', '')
+                            function_name = tool_id_to_name.get(tool_use_id, tool_use_id)
+
                             parts.append({
                                 'function_response': {
-                                    'name': block.get('tool_use_id', 'unknown'),
+                                    'name': function_name,
                                     'response': {'result': str(result_content)}
                                 }
                             })
+
+                        elif block_type in ('server_tool_use', 'web_search_tool_result'):
+                            # Skip Anthropic-specific blocks - not supported by Gemini
+                            logging.debug(f"Skipping Anthropic-specific block type: {block_type}")
+                            continue
+
                     elif isinstance(block, str):
                         parts.append({'text': block})
 
@@ -628,17 +668,24 @@ class GoogleGeminiService(LLMService):
                 generation_config.system_instruction = system_instruction
 
             # Build tools list
+            # NOTE: Google's API does NOT allow combining Google Search grounding
+            # with function calling tools - they are mutually exclusive.
+            # When web search is enabled, we use ONLY the search tool.
             all_tools = []
+            web_search_active = False
 
             # Add web search (grounding) tool if enabled
             if web_search_config and web_search_config.get('enabled'):
                 web_search_tool = self._build_web_search_tool(web_search_config)
                 if web_search_tool:
                     all_tools.append(web_search_tool)
-                    logging.info("Google Search grounding enabled for this request")
+                    web_search_active = True
+                    logging.info("Google Search grounding enabled for this request (function calling disabled)")
 
-            # Add regular tools if provided
-            if tools:
+            # Add regular tools if provided - but NOT if web search is active
+            # Google's API returns "Tool use with function calling is unsupported"
+            # when combining grounding with function declarations
+            if tools and not web_search_active:
                 gemini_tools = self._convert_tools_to_gemini_format(tools)
                 all_tools.extend(gemini_tools)
 
@@ -760,6 +807,15 @@ class GoogleGeminiService(LLMService):
                             'name': fc.name,
                             'input': dict(fc.args) if hasattr(fc.args, 'items') else fc.args
                         }
+                        # Capture thought signature if present (required for Gemini 3.x models)
+                        # Encode as base64 string for JSON serialization
+                        if hasattr(part, 'thought_signature') and part.thought_signature:
+                            sig = part.thought_signature
+                            if isinstance(sig, bytes):
+                                tool_block['thought_signature'] = base64.b64encode(sig).decode('utf-8')
+                            else:
+                                tool_block['thought_signature'] = str(sig)
+                            logging.debug(f"Captured thought_signature for function call: {fc.name}")
                         tool_use_blocks.append(tool_block)
                         content_blocks.append(tool_block)
                         stop_reason = 'tool_use'

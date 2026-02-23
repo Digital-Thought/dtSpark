@@ -21,6 +21,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Request, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 
+from dtSpark.core import get_provider_from_model_id
 from ..dependencies import get_current_session
 
 
@@ -447,6 +448,9 @@ async def command_change_model(
     """
     Execute 'changemodel' command to change conversation model.
 
+    Model changes are restricted to models from the same provider as the
+    conversation's original model to avoid cross-provider compatibility issues.
+
     Args:
         conversation_id: ID of the conversation
         model_id: New model ID
@@ -456,6 +460,7 @@ async def command_change_model(
     """
     try:
         app_instance = request.app.state.app_instance
+        database = app_instance.database
 
         # Check if model is locked via configuration
         mandatory_model = getattr(app_instance, 'configured_model_id', None)
@@ -464,6 +469,30 @@ async def command_change_model(
                 command="changemodel",
                 status="error",
                 message=f"Model changing is disabled - model is locked to '{mandatory_model}' via configuration",
+                data=None,
+            )
+
+        # Get current conversation to check provider
+        conv = database.get_conversation(conversation_id)
+        if not conv:
+            return CommandResponse(
+                command="changemodel",
+                status="error",
+                message="Conversation not found",
+                data=None,
+            )
+
+        # Check provider compatibility
+        current_model_id = conv.get('model_id', '')
+        current_provider = get_provider_from_model_id(current_model_id)
+        new_provider = get_provider_from_model_id(model_id)
+
+        if current_provider != new_provider:
+            return CommandResponse(
+                command="changemodel",
+                status="error",
+                message=f"Cannot switch between providers. This conversation uses {current_provider} models. "
+                        f"The selected model '{model_id}' is from {new_provider}.",
                 data=None,
             )
 

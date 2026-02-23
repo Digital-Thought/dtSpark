@@ -358,9 +358,14 @@ async def delete_conversation(
 async def list_models(
     request: Request,
     session_id: str = Depends(get_current_session),
+    provider: Optional[str] = None,
 ) -> dict:
     """
     Get available models and mandatory model configuration.
+
+    Args:
+        provider: Optional provider filter (e.g., 'google_gemini', 'anthropic').
+                  When specified, only models from this provider are returned.
 
     Returns:
         Dictionary with models list and mandatory model info
@@ -404,10 +409,24 @@ async def list_models(
             if filtered:
                 models = filtered
 
-        # Check if web search is globally enabled for Anthropic
-        web_search_enabled = app_instance.settings.get(
+        # Filter by provider if specified (for cross-provider restriction in chats)
+        if provider:
+            # Normalise provider matching (case-insensitive, partial match)
+            provider_lower = provider.lower()
+            models = [
+                m for m in models
+                if provider_lower in m['provider'].lower()
+                or provider_lower in m['id'].lower()
+            ]
+
+        # Check if web search is globally enabled for any provider
+        anthropic_web_search = app_instance.settings.get(
             'llm_providers.anthropic.web_search.enabled', False
         )
+        gemini_web_search = app_instance.settings.get(
+            'llm_providers.google_gemini.web_search.enabled', False
+        )
+        web_search_enabled = anthropic_web_search or gemini_web_search
 
         return {
             "models": models,

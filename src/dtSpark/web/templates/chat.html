@@ -161,6 +161,33 @@ document.getElementById('infoModal').addEventListener('show.bs.modal', function(
 // Initialise chat with conversation ID
 const conversationId = {{ conversation_id }};
 
+// Current model info (set when conversation loads)
+let currentModelId = null;
+let currentProvider = null;
+
+// Determine provider from model ID (mirrors backend logic)
+function getProviderFromModelId(modelId) {
+    if (!modelId) return 'unknown';
+    const modelLower = modelId.toLowerCase();
+
+    // Check for Google Gemini models
+    if (modelLower.includes('gemini') || modelLower.startsWith('models/')) {
+        return 'google_gemini';
+    }
+    // Check for Anthropic/Claude models
+    if (modelLower.includes('claude') || modelLower.includes('anthropic')) {
+        return 'anthropic';
+    }
+    // Check for Bedrock-specific patterns
+    if (modelLower.includes('amazon.') || modelLower.includes('titan') ||
+        modelLower.includes('meta.') || modelLower.includes('mistral.') ||
+        modelLower.includes('cohere.') || modelLower.includes('ai21.')) {
+        return 'aws_bedrock';
+    }
+    // Default to ollama
+    return 'ollama';
+}
+
 // Web search toggle state (default ON if web search is enabled for conversation)
 let webSearchActive = {{ 'true' if web_search_enabled else 'false' }};
 
@@ -179,9 +206,21 @@ function toggleWebSearch() {
     }
 }
 
-// Load chat history on page load
-window.addEventListener('load', () => {
+// Load chat history and conversation info on page load
+window.addEventListener('load', async () => {
     loadChatHistory(conversationId);
+
+    // Fetch conversation info to get current model for provider filtering
+    try {
+        const response = await fetch(`/api/chat/${conversationId}/command/info`, { method: 'POST' });
+        const data = await response.json();
+        if (data.data && data.data.conversation) {
+            currentModelId = data.data.conversation.model_id;
+            currentProvider = getProviderFromModelId(currentModelId);
+        }
+    } catch (error) {
+        console.error('Error loading conversation info:', error);
+    }
 });
 
 // Handle chat form submission
@@ -391,7 +430,9 @@ async function performExport() {
 async function showChangeModelModal() {
     // Check if model is locked first
     try {
-        const configResponse = await fetch('/api/models');
+        // Filter models by current provider to prevent cross-provider switching
+        const providerParam = currentProvider ? `?provider=${encodeURIComponent(currentProvider)}` : '';
+        const configResponse = await fetch(`/api/models${providerParam}`);
         const configData = await configResponse.json();
 
         if (configData.model_locked) {
@@ -400,6 +441,16 @@ async function showChangeModelModal() {
         }
 
         const models = configData.models || configData;
+
+        if (models.length === 0) {
+            showToast('No compatible models available for this provider', 'error');
+            return;
+        }
+
+        // Format provider name for display
+        const providerDisplayName = currentProvider ?
+            currentProvider.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) :
+            'Unknown';
 
         const modalHTML = `
             <div class="modal fade" id="changeModelModal" tabindex="-1">
@@ -410,6 +461,11 @@ async function showChangeModelModal() {
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
+                            <div class="alert alert-info small mb-3">
+                                <i class="bi bi-info-circle"></i>
+                                Only <strong>${providerDisplayName}</strong> models are shown.
+                                Switching between providers is not supported within a conversation.
+                            </div>
                             <div class="mb-3">
                                 <label class="form-label">Select New Model</label>
                                 <select class="form-select" id="new-model-select">
@@ -690,6 +746,10 @@ async function loadConversationInfo() {
         const conv = data.data.conversation;
         const modelUsage = data.data.model_usage;
         const rollupSettings = data.data.rollup_settings;
+
+        // Store current model info for provider filtering
+        currentModelId = conv.model_id;
+        currentProvider = getProviderFromModelId(currentModelId);
 
         let infoHTML = `
             <div class="mb-3">

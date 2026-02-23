@@ -2,7 +2,7 @@
 
 {% block title %}Main Menu - {{ app_name }}{% endblock %}
 
-{% block extra_styles %}
+{% block extra_head %}
 <style>
     .provider-badge {
         font-size: 0.9rem;
@@ -112,52 +112,72 @@
     .provider-icon.ollama { color: #0ea5e9; }
     .provider-icon.google_gemini { color: #4285f4; }
 
-    /* Provider selector buttons in LLMs tab */
-    .provider-selector {
+    /* Provider tiles row in LLMs tab */
+    .provider-tiles-row {
         display: flex;
+        flex-wrap: wrap;
         gap: 1rem;
-        margin-bottom: 1.5rem;
-        padding: 1rem;
-        background: rgba(255,255,255,0.03);
-        border-radius: 0.5rem;
+        padding: 0.5rem 0;
     }
-    .provider-selector-btn {
+    .provider-tile {
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
         padding: 1rem 1.5rem;
-        border: 2px solid transparent;
-        border-radius: 0.5rem;
-        background: rgba(255,255,255,0.05);
+        border: 2px solid rgba(255,255,255,0.25);
+        border-radius: 0.75rem;
+        background: rgba(255,255,255,0.03);
         cursor: pointer;
         transition: all 0.2s ease;
-        min-width: 120px;
+        min-width: 140px;
+        text-align: center;
     }
-    .provider-selector-btn:hover {
-        background: rgba(255,255,255,0.1);
+    .provider-tile:hover {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.4);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
-    .provider-selector-btn.active {
+    .provider-tile.active {
         border-color: #0d6efd;
-        background: rgba(13,110,253,0.15);
+        background: rgba(13, 110, 253, 0.1);
+        box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.3);
     }
-    .provider-selector-btn.unavailable {
-        opacity: 0.4;
+    .provider-tile.unavailable {
         cursor: not-allowed;
+        background: rgba(108, 117, 125, 0.15);
+        border-color: rgba(108, 117, 125, 0.3);
+        border-style: dashed;
     }
-    .provider-selector-btn .selector-icon {
+    .provider-tile.unavailable .tile-icon,
+    .provider-tile.unavailable .tile-name,
+    .provider-tile.unavailable .tile-status {
+        opacity: 0.5;
+    }
+    .provider-tile.unavailable:hover {
+        transform: none;
+        box-shadow: none;
+        background: rgba(108, 117, 125, 0.15);
+        border-color: rgba(108, 117, 125, 0.3);
+    }
+    .provider-tile .tile-icon {
         font-size: 2rem;
         margin-bottom: 0.5rem;
     }
-    .provider-selector-btn .selector-name {
+    .provider-tile .tile-name {
         font-size: 0.9rem;
-        font-weight: 500;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
     }
-    .provider-selector-btn .selector-status {
+    .provider-tile .tile-status {
         font-size: 0.75rem;
-        margin-top: 0.25rem;
     }
+    .provider-tile .tile-status.connected { color: #28a745; }
+    .provider-tile .tile-status.error { color: #ffc107; }
+    .provider-tile .tile-status.unavailable { color: #6c757d; }
 </style>
-{% endblock %}
+{% endblock extra_head %}
 
 {% block content %}
 <div class="row mb-4">
@@ -259,15 +279,15 @@
 
     <!-- LLMs Tab -->
     <div class="tab-pane fade" id="llms" role="tabpanel">
-        <!-- Provider Selector Icons -->
-        <div class="provider-selector" id="provider-selector">
+        <!-- Provider Tiles Row (always visible) -->
+        <div class="provider-tiles-row mb-4" id="provider-tiles-container">
             <div class="text-center py-3 w-100">
                 <output class="spinner-border spinner-border-sm text-primary"></output>
                 <span class="ms-2">Loading providers...</span>
             </div>
         </div>
 
-        <!-- Selected Provider Details -->
+        <!-- Selected Provider Details (shown below tiles) -->
         <div id="selected-provider-details">
             <div class="text-center py-5 text-muted">
                 <i class="bi bi-hand-index-thumb fs-1 d-block mb-3"></i>
@@ -467,13 +487,8 @@ async function loadProviders() {
         // Update Overview tab - LLM Providers tile
         updateLLMProvidersOverview();
 
-        // Update LLMs tab - Provider selector
+        // Update LLMs tab - Provider tiles
         updateProviderSelector();
-
-        // Auto-select first available provider
-        if (allProviders.length > 0) {
-            selectProvider(allProviders[0].type);
-        }
 
     } catch (error) {
         console.error('Error loading providers:', error);
@@ -519,31 +534,34 @@ function updateLLMProvidersOverview() {
     container.innerHTML = html;
 }
 
-// Update the provider selector on LLMs tab
+// Update the provider tiles row on LLMs tab
 function updateProviderSelector() {
-    const container = document.getElementById('provider-selector');
+    const container = document.getElementById('provider-tiles-container');
 
     // Get configured provider types
     const configuredTypes = new Set(allProviders.map(p => p.type));
 
     let html = '';
 
-    // Show all three provider icons as selectable buttons
+    // Show all providers as clickable tiles in a row
     Object.entries(providerDefinitions).forEach(([type, def]) => {
         const isAvailable = configuredTypes.has(type);
         const provider = allProviders.find(p => p.type === type);
         const isConnected = provider && provider.status === 'connected';
 
+        const statusText = isAvailable && isConnected ? '● Connected' :
+                          isAvailable ? '● Error' : '○ Not configured';
+        const statusClass = isAvailable && isConnected ? 'connected' :
+                           isAvailable ? 'error' : 'unavailable';
+
         html += `
-            <div class="provider-selector-btn ${isAvailable ? '' : 'unavailable'}"
+            <div class="provider-tile ${isAvailable ? '' : 'unavailable'}"
                  data-provider-type="${type}"
                  onclick="${isAvailable ? `selectProvider('${type}')` : ''}"
                  title="${isAvailable ? `View ${def.name} details` : `${def.name} is not configured`}">
-                <i class="bi ${def.icon} selector-icon" style="color: ${def.colour};"></i>
-                <span class="selector-name">${def.name}</span>
-                <span class="selector-status ${isAvailable && isConnected ? 'text-success' : isAvailable ? 'text-warning' : 'text-muted'}">
-                    ${isAvailable && isConnected ? '● Connected' : isAvailable ? '● Error' : '○ Not configured'}
-                </span>
+                <i class="bi ${def.icon} tile-icon" style="color: ${def.colour};"></i>
+                <div class="tile-name">${def.name}</div>
+                <div class="tile-status ${statusClass}">${statusText}</div>
             </div>
         `;
     });
@@ -551,24 +569,25 @@ function updateProviderSelector() {
     container.innerHTML = html;
 }
 
-// Select a provider and show its details
+// Select a provider and show its details below the tiles
 function selectProvider(providerType) {
     selectedProviderType = providerType;
 
-    // Update selector button active states
-    document.querySelectorAll('.provider-selector-btn').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.providerType === providerType) {
-            btn.classList.add('active');
+    // Update tile active states
+    document.querySelectorAll('.provider-tile').forEach(tile => {
+        tile.classList.remove('active');
+        if (tile.dataset.providerType === providerType) {
+            tile.classList.add('active');
         }
     });
 
     // Find the provider data
     const provider = allProviders.find(p => p.type === providerType);
     const def = providerDefinitions[providerType];
+    const detailsContainer = document.getElementById('selected-provider-details');
 
     if (!provider) {
-        document.getElementById('selected-provider-details').innerHTML = `
+        detailsContainer.innerHTML = `
             <div class="alert alert-warning">
                 <i class="bi bi-exclamation-triangle-fill"></i> Provider not found
             </div>
@@ -662,7 +681,7 @@ function selectProvider(providerType) {
     }
     {% endif %}
 
-    document.getElementById('selected-provider-details').innerHTML = html;
+    detailsContainer.innerHTML = html;
 }
 
 // Update user identity on System tab
