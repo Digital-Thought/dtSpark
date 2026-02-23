@@ -124,7 +124,7 @@ async def get_chat_history(
 async def send_message(
     conversation_id: int,
     request: Request,
-    message: str = Form(...),
+    message: Annotated[str, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
@@ -391,8 +391,8 @@ async def command_attach(
 async def command_export(
     conversation_id: int,
     request: Request,
-    format: str = Form(...),  # 'markdown', 'html', or 'csv'
-    include_tools: bool = Form(True),
+    format: Annotated[str, Form(...)],  # 'markdown', 'html', or 'csv'
+    include_tools: Annotated[bool, Form(True)],
     session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
@@ -445,7 +445,7 @@ async def command_export(
 async def command_change_model(
     conversation_id: int,
     request: Request,
-    model_id: str = Form(...),
+    model_id: Annotated[str, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
@@ -592,8 +592,8 @@ async def command_mcp_servers(
 async def toggle_mcp_server(
     conversation_id: int,
     request: Request,
-    server_name: str = Form(...),
-    enabled: bool = Form(...),
+    server_name: Annotated[str, Form(...)],
+    enabled: Annotated[bool, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """
@@ -635,7 +635,7 @@ async def toggle_mcp_server(
 async def update_instructions(
     request: Request,
     conversation_id: int,
-    instructions: str = Form(""),
+    instructions: Annotated[str, Form("")],
     session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
@@ -771,8 +771,8 @@ async def delete_files(
 @router.post("/chat/security/respond")
 async def respond_to_security_request(
     request: Request,
-    request_id: str = Form(...),
-    confirmed: bool = Form(...),
+    request_id: Annotated[str, Form(...)],
+    confirmed: Annotated[bool, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)]
 ):
     """
@@ -822,8 +822,8 @@ async def respond_to_security_request(
 @router.post("/chat/permission/respond")
 async def respond_to_permission_request(
     request: Request,
-    request_id: str = Form(...),
-    response: str = Form(...),
+    request_id: Annotated[str, Form(...)],
+    response: Annotated[str, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)]
 ):
     """
@@ -874,8 +874,8 @@ async def respond_to_permission_request(
 async def submit_conflict_response(
     request: Request,
     conversation_id: int,
-    request_id: str = Form(...),
-    remove_orphan: bool = Form(...),
+    request_id: Annotated[str, Form(...)],
+    remove_orphan: Annotated[bool, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
@@ -972,7 +972,7 @@ async def get_compaction_settings(
 async def set_compaction_model(
     request: Request,
     conversation_id: int,
-    model_id: str = Form(...),
+    model_id: Annotated[str, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
@@ -1013,7 +1013,7 @@ async def set_compaction_model(
 async def set_compaction_threshold(
     request: Request,
     conversation_id: int,
-    threshold: str = Form(...),
+    threshold: Annotated[str, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
@@ -1069,7 +1069,7 @@ async def set_compaction_threshold(
 async def set_compaction_ratio(
     request: Request,
     conversation_id: int,
-    ratio: str = Form(...),
+    ratio: Annotated[str, Form(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ):
     """

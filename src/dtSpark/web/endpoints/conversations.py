@@ -157,10 +157,10 @@ async def get_conversation(
 @router.post("/conversations")
 async def create_conversation(
     request: Request,
-    name: str = Form(...),
-    model_id: str = Form(...),
-    instructions: Optional[str] = Form(None),
-    web_search_enabled: Optional[str] = Form(None),
+    name: Annotated[str, Form(...)],
+    model_id: Annotated[str, Form(...)],
+    instructions: Annotated[Optional[str], Form(None)],
+    web_search_enabled: Annotated[Optional[str], Form(None)],
     files: Optional[List[UploadFile]] = File(None),
     session_id: Annotated[str, Depends(get_current_session)],
 ) -> ConversationDetail:

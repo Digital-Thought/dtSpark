@@ -11,7 +11,7 @@ Provides REST API for main menu operations:
 """
 
 import logging
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Request, HTTPException
 from pydantic import BaseModel
@@ -70,7 +70,7 @@ class ProviderInfo(BaseModel):
 @router.get("/account")
 async def get_account_info(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> AccountInfo:
     """
     Get account information for the configured provider.
@@ -136,7 +136,7 @@ def _build_aws_account_info(app_instance, user_guid: str) -> Optional[AccountInf
 @router.get("/providers")
 async def get_providers(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> list[ProviderInfo]:
     """
     Get all configured LLM providers and their available models.
@@ -249,7 +249,7 @@ def _parse_model_info(model) -> ProviderModelInfo:
 @router.get("/costs/last-month")
 async def get_last_month_costs(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CostInfo:
     """
     Get AWS Bedrock costs for the last month.
@@ -293,7 +293,7 @@ async def get_last_month_costs(
 @router.get("/costs/last-24-hours")
 async def get_last_24_hours_costs(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> CostInfo:
     """
     Get AWS Bedrock costs for the last 24 hours.
@@ -337,7 +337,7 @@ async def get_last_24_hours_costs(
 @router.post("/costs/refresh")
 async def refresh_costs(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Refresh AWS Bedrock cost information.
@@ -370,7 +370,7 @@ async def refresh_costs(
 @router.get("/mcp/servers")
 async def get_mcp_servers(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> list[MCPServerInfo]:
     """
     Get MCP server status and information.
@@ -424,7 +424,7 @@ async def get_mcp_servers(
 @router.get("/tools")
 async def get_all_tools(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Get all available tools (MCP + embedded).
@@ -476,7 +476,7 @@ async def get_all_tools(
 async def get_mcp_tools(
     request: Request,
     server: Optional[str] = None,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> list[dict]:
     """
     Get available tools from MCP servers.
@@ -530,7 +530,7 @@ class EmbeddedToolInfo(BaseModel):
 @router.get("/embedded-tools")
 async def get_embedded_tools(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> list[EmbeddedToolInfo]:
     """
     Get all embedded tools with their categories.
