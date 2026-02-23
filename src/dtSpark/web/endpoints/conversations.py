@@ -161,7 +161,7 @@ async def create_conversation(
     model_id: Annotated[str, Form(...)],
     instructions: Annotated[Optional[str], Form(None)],
     web_search_enabled: Annotated[Optional[str], Form(None)],
-    files: Optional[List[UploadFile]] = File(None),
+    files: Annotated[Optional[List[UploadFile]], File(None)],
     session_id: Annotated[str, Depends(get_current_session)],
 ) -> ConversationDetail:
     """

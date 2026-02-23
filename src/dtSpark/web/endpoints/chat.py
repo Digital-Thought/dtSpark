@@ -294,7 +294,7 @@ async def command_info(
 async def command_attach(
     conversation_id: int,
     request: Request,
-    files: List[UploadFile] = File(...),
+    files: Annotated[List[UploadFile], File(...)],
     session_id: Annotated[str, Depends(get_current_session)],
 ) -> CommandResponse:
     """

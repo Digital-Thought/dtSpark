@@ -13,7 +13,7 @@ import time
 import webbrowser
 import signal
 import asyncio
-from typing import Optional
+from typing import Annotated, Optional
 from pathlib import Path
 
 import uvicorn
@@ -456,7 +456,7 @@ def create_app(
         return response
 
     @app.get("/logout")
-    async def logout(request: Request, session_id: str = Depends(get_session)):
+    async def logout(request: Request, session_id: Annotated[str, Depends(get_session)]):
         """Handle logout - invalidate session and show goodbye page."""
         session_manager.invalidate_session()
         response = templates.TemplateResponse(
@@ -471,7 +471,7 @@ def create_app(
         return response
 
     @app.get("/quit")
-    async def quit_app(request: Request, session_id: str = Depends(get_session)):
+    async def quit_app(request: Request, session_id: Annotated[str, Depends(get_session)]):
         """Handle quit - invalidate session, show goodbye page, and trigger shutdown."""
         session_manager.invalidate_session()
         response = templates.TemplateResponse(
@@ -502,7 +502,7 @@ def create_app(
         return JSONResponse({"status": "shutdown initiated"})
 
     @app.get("/menu", response_class=HTMLResponse)
-    async def main_menu(request: Request, session_id: str = Depends(get_session)):
+    async def main_menu(request: Request, session_id: Annotated[str, Depends(get_session)]):
         """Display main menu page."""
         return templates.TemplateResponse(
             "main_menu.html",
@@ -531,7 +531,7 @@ def create_app(
 
     # Add template routes for conversations and chat
     @app.get("/conversations", response_class=HTMLResponse)
-    async def conversations_page(request: Request, session_id: str = Depends(get_session)):
+    async def conversations_page(request: Request, session_id: Annotated[str, Depends(get_session)]):
         """Display conversations list page."""
         return templates.TemplateResponse(
             "conversations.html",
@@ -543,7 +543,7 @@ def create_app(
         )
 
     @app.get("/conversations/new", response_class=HTMLResponse)
-    async def new_conversation_page(request: Request, session_id: str = Depends(get_session)):
+    async def new_conversation_page(request: Request, session_id: Annotated[str, Depends(get_session)]):
         """Display new conversation creation page."""
         if not new_conversations_allowed:
             return RedirectResponse(url="/conversations", status_code=303)
@@ -560,7 +560,7 @@ def create_app(
     async def chat_page(
         conversation_id: int,
         request: Request,
-        session_id: str = Depends(get_session)
+        session_id: Annotated[str, Depends(get_session)]
     ):
         """Display chat page for a conversation."""
         # Get conversation name
@@ -581,7 +581,7 @@ def create_app(
         )
 
     @app.get("/actions", response_class=HTMLResponse)
-    async def actions_page(request: Request, session_id: str = Depends(get_session)):
+    async def actions_page(request: Request, session_id: Annotated[str, Depends(get_session)]):
         """Display autonomous actions management page."""
         if not actions_enabled:
             return RedirectResponse(url="/menu", status_code=303)

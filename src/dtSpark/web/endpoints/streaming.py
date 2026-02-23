@@ -10,7 +10,7 @@ and progress updates.
 import asyncio
 import json
 import logging
-from typing import AsyncGenerator
+from typing import Annotated, AsyncGenerator
 
 from fastapi import APIRouter, Depends, Request
 from sse_starlette.sse import EventSourceResponse
@@ -480,7 +480,7 @@ async def stream_chat(
     conversation_id: int,
     message: str,
     web_search_active: bool = False,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     SSE endpoint for streaming chat responses.
@@ -526,7 +526,7 @@ async def stream_chat(
 async def stream_tool(
     request: Request,
     tool_name: str,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     SSE endpoint for streaming tool execution.
@@ -555,7 +555,7 @@ async def stream_progress(
     request: Request,
     task_name: str,
     total_steps: int = 10,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     SSE endpoint for streaming progress updates.

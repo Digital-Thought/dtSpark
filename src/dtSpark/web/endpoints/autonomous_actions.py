@@ -11,7 +11,7 @@ Provides REST API for managing autonomous actions:
 """
 
 import logging
-from typing import Optional, List
+from typing import Annotated, Optional, List
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request, HTTPException, Query
@@ -154,7 +154,7 @@ class ActionRunDetail(BaseModel):
 async def list_actions(
     request: Request,
     include_disabled: bool = Query(True, description="Include disabled actions"),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> List[ActionSummary]:
     """
     List all autonomous actions.
@@ -199,7 +199,7 @@ async def list_actions(
 async def get_action(
     action_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> ActionDetail:
     """
     Get detailed information about an action.
@@ -249,7 +249,7 @@ async def get_action(
 async def create_action(
     action_data: ActionCreate,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> ActionDetail:
     """
     Create a new autonomous action.
@@ -311,7 +311,7 @@ async def update_action(
     action_id: int,
     action_data: ActionUpdate,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> ActionDetail:
     """
     Update an action.
@@ -376,7 +376,7 @@ async def update_action(
 async def delete_action(
     action_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Delete an action.
@@ -418,7 +418,7 @@ async def delete_action(
 async def enable_action(
     action_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Enable a disabled action.
@@ -465,7 +465,7 @@ async def enable_action(
 async def disable_action(
     action_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Disable an action.
@@ -506,7 +506,7 @@ async def disable_action(
 async def run_action_now(
     action_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Trigger an action to run immediately.
@@ -567,7 +567,7 @@ async def list_action_runs(
     request: Request,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> List[ActionRunSummary]:
     """
     List runs for a specific action.
@@ -616,7 +616,7 @@ async def get_action_run(
     action_id: int,
     run_id: int,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> ActionRunDetail:
     """
     Get detailed information about a specific run.
@@ -663,7 +663,7 @@ async def export_run_result(
     run_id: int,
     request: Request,
     format: str = Query("text", pattern="^(text|html|markdown)$"),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ):
     """
     Export run result in specified format.
@@ -714,7 +714,7 @@ async def export_run_result(
 async def list_recent_runs(
     request: Request,
     limit: int = Query(20, ge=1, le=100),
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> List[ActionRunSummary]:
     """
     List recent runs across all actions.
@@ -753,7 +753,7 @@ async def list_recent_runs(
 @router.get("/actions/status/failed-count")
 async def get_failed_action_count(
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Get count of failed/disabled actions.
@@ -800,7 +800,7 @@ _creation_sessions = {}
 async def start_ai_creation(
     request: Request,
     data: AICreationStart,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Start an AI-assisted action creation session.
@@ -916,7 +916,7 @@ async def send_ai_creation_message(
     creation_id: str,
     request: Request,
     data: AICreationMessage,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Send a message in an AI creation chat session.
@@ -1111,7 +1111,7 @@ async def send_ai_creation_message(
 async def cancel_ai_creation(
     creation_id: str,
     request: Request,
-    session_id: str = Depends(get_current_session),
+    session_id: Annotated[str, Depends(get_current_session)],
 ) -> dict:
     """
     Cancel an AI creation session.
