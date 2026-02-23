@@ -392,8 +392,8 @@ async def command_export(
     conversation_id: int,
     request: Request,
     format: Annotated[str, Form(...)],  # 'markdown', 'html', or 'csv'
-    include_tools: Annotated[bool, Form(True)],
     session_id: Annotated[str, Depends(get_current_session)],
+    include_tools: Annotated[bool, Form()] = True,
 ) -> dict:
     """
     Execute 'export' command to export conversation.
@@ -635,8 +635,8 @@ async def toggle_mcp_server(
 async def update_instructions(
     request: Request,
     conversation_id: int,
-    instructions: Annotated[str, Form("")],
     session_id: Annotated[str, Depends(get_current_session)],
+    instructions: Annotated[str, Form()] = "",
 ):
     """
     Update conversation instructions/system prompt.

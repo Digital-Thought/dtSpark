@@ -159,10 +159,10 @@ async def create_conversation(
     request: Request,
     name: Annotated[str, Form(...)],
     model_id: Annotated[str, Form(...)],
-    instructions: Annotated[Optional[str], Form(None)],
-    web_search_enabled: Annotated[Optional[str], Form(None)],
-    files: Annotated[Optional[List[UploadFile]], File(None)],
     session_id: Annotated[str, Depends(get_current_session)],
+    instructions: Annotated[Optional[str], Form()] = None,
+    web_search_enabled: Annotated[Optional[str], Form()] = None,
+    files: Annotated[Optional[List[UploadFile]], File()] = None,
 ) -> ConversationDetail:
     """
     Create a new conversation.
